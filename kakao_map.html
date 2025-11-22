@@ -1,43 +1,68 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+  />
   <title>R2U Kakao Map</title>
   <style>
-    html,body{margin:0;height:100%}
-    #map{width:100%;height:100vh}
+    html, body { margin:0; padding:0; height:100%; }
+    #map { width:100%; height:100vh; }
   </style>
-  <!-- 반드시 JavaScript 키 사용! -->
-  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&autoload=false"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf"></script>
 </head>
 <body>
   <div id="map"></div>
+
   <script>
-    let map;   // ✅ 전역 선언 (moveTo에서 접근 가능)
-    let marker;
+    // 🔹 전역 변수 (다른 함수에서도 쓸 수 있도록 var로 선언)
+    var map;
+    var routeLine = null;
 
-    // SDK가 로딩된 후 실행
-    kakao.maps.load(function () {
-      map = new kakao.maps.Map(document.getElementById('map'), {
-        center: new kakao.maps.LatLng(37.4507,126.6530),
+    // 🔹 지도 생성
+    (function initMap() {
+      const container = document.getElementById('map');
+      const options = {
+        center: new kakao.maps.LatLng(37.4507, 126.6530), // 인하대 근처
         level: 3
+      };
+      map = new kakao.maps.Map(container, options);
+    })();
+
+    // 🔹 Flutter에서 호출하는 함수: 추천 경로 표시
+    function showRecommendedRoute(routeData) {
+      console.log("📡 추천 경로 데이터:", routeData);
+
+      const linePath = [];
+
+      // JSON의 polyline 배열을 LatLng 배열로 변환
+      (routeData.polyline || []).forEach(function(p) {
+        linePath.push(new kakao.maps.LatLng(p.lat, p.lng));
       });
-    });
 
-    // ✅ Flutter에서 호출할 함수
-    function moveTo(lat, lng) {
-      const pos = new kakao.maps.LatLng(lat, lng);
-      map.setCenter(pos);
-      setMarker(pos);
-    }
+      // 기존 경로가 있으면 제거
+      if (routeLine) {
+        routeLine.setMap(null);
+      }
 
-    function setMarker(position) {
-      if (marker) marker.setMap(null);
-      marker = new kakao.maps.Marker({ position });
-      marker.setMap(map);
+      // 새 Polyline 생성
+      routeLine = new kakao.maps.Polyline({
+        map: map,
+        path: linePath,
+        strokeWeight: 5,
+        strokeColor: '#FF4D4D',
+        strokeOpacity: 0.9,
+        strokeStyle: 'solid'
+      });
+
+      // 경로가 있으면 첫 지점을 중심으로 이동
+      if (linePath.length > 0) {
+        map.setCenter(linePath[0]);
+      }
     }
   </script>
+
 </body>
 </html>
-
