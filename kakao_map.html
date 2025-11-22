@@ -1,4 +1,40 @@
-function showRecommendedRoute(routeData) {
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+  />
+  <title>R2U Kakao Map</title>
+  <style>
+    html, body { margin:0; padding:0; height:100%; }
+    #map { width:100%; height:100vh; }
+  </style>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf"></script>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script>
+    // 🔹 전역 변수 (다른 함수에서도 쓸 수 있도록 var로 선언)
+    var map;
+    var routeLine = null;
+    var startMarker = null;
+    var endMarker = null;
+
+    // 🔹 지도 생성
+    (function initMap() {
+      const container = document.getElementById('map');
+      const options = {
+        center: new kakao.maps.LatLng(37.4507, 126.6530), // 인하대 근처
+        level: 3
+      };
+      map = new kakao.maps.Map(container, options);
+    })();
+
+    // 🔹 Flutter에서 호출하는 함수: 추천 경로 표시
+    function showRecommendedRoute(routeData) {
   console.log("📡 추천 경로 데이터:", routeData);
 
   const linePath = [];
@@ -48,3 +84,7 @@ function showRecommendedRoute(routeData) {
     map.setCenter(startPos);
   }
 }
+
+  </script>
+</body>
+</html>
