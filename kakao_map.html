@@ -34,56 +34,72 @@
     })();
 
     // 🔹 Flutter에서 호출하는 함수: 추천 경로 표시
-    function showRecommendedRoute(routeData) {
-  console.log("📡 추천 경로 데이터:", routeData);
+   // 🔹 Flutter에서 호출하는 함수: 추천 경로 표시
+function showRecommendedRoute(routeData) {
+  console.log("📡 받은 원본 데이터:", routeData);
 
-  const linePath = [];
+  // 1) polyline 유효성 체크
+  if (!routeData || !Array.isArray(routeData.polyline)) {
+    console.log("⚠ polyline 배열이 없습니다. keys:", Object.keys(routeData || {}));
+    return;
+  }
 
-  // JSON의 polyline 배열을 LatLng 배열로 변환
-  (routeData.polyline || []).forEach(function (p) {
-    linePath.push(new kakao.maps.LatLng(p.lat, p.lng));
+  console.log("📍 polyline 길이:", routeData.polyline.length);
+
+  // 2) LatLng 배열로 변환
+  var linePath = routeData.polyline.map(function(p) {
+    // 숫자로 한 번 강제 변환 (혹시 문자열이면 대비)
+    var lat = Number(p.lat);
+    var lng = Number(p.lng);
+    return new kakao.maps.LatLng(lat, lng);
   });
 
-  // 기존 경로가 있으면 제거
+  if (linePath.length === 0) {
+    console.log("⚠ linePath가 비어 있습니다.");
+    return;
+  }
+
+  // 3) 기존 경로/마커 제거
   if (routeLine) {
     routeLine.setMap(null);
   }
+  if (startMarker) startMarker.setMap(null);
+  if (endMarker) endMarker.setMap(null);
 
-  // 🔹 새 Polyline 생성 (앱 메인 컬러: 초록)
+  // 4) 새 Polyline 생성 (초록색)
   routeLine = new kakao.maps.Polyline({
     map: map,
     path: linePath,
     strokeWeight: 5,
-    strokeColor: '#00C853', // ✅ 초록색 (원하면 코드 바꿔도 됨)
+    strokeColor: '#00C853',
     strokeOpacity: 0.9,
     strokeStyle: 'solid'
   });
 
-  // 🔹 출발/도착 좌표 구하기
-  if (linePath.length > 0) {
-    const startPos = linePath[0];
-    const endPos = linePath[linePath.length - 1];
+  // 5) 시작/끝 마커
+  var startPos = linePath[0];
+  var endPos = linePath[linePath.length - 1];
 
-    // 이전 마커 있으면 제거
-    if (startMarker) startMarker.setMap(null);
-    if (endMarker) endMarker.setMap(null);
+  startMarker = new kakao.maps.Marker({
+    map: map,
+    position: startPos
+  });
 
-    // 🔹 출발 마커
-    startMarker = new kakao.maps.Marker({
-      map: map,
-      position: startPos
-    });
+  endMarker = new kakao.maps.Marker({
+    map: map,
+    position: endPos
+  });
 
-    // 🔹 도착 마커 (기본 마커 + 타이틀만 다르게)
-    endMarker = new kakao.maps.Marker({
-      map: map,
-      position: endPos
-    });
+  // 6) 화면을 전체 경로에 맞추기 (가장 확실하게 보이게)
+  var bounds = new kakao.maps.LatLngBounds();
+  linePath.forEach(function (pos) {
+    bounds.extend(pos);
+  });
+  map.setBounds(bounds);
 
-    // 🔹 맵 중심을 출발 지점으로 이동
-    map.setCenter(startPos);
-  }
+  console.log("✅ 폴리라인/마커 표시 완료");
 }
+
 
   </script>
 </body>
