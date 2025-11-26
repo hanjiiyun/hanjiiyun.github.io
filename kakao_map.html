@@ -99,6 +99,40 @@ function showRecommendedRoute(routeData) {
 
   console.log("✅ 폴리라인/마커 표시 완료");
 }
+// ==========================
+// 🔵 사용자 현재 위치 마커 표시 함수
+// ==========================
+let userMarker = null;
+
+function showUserLocation(lat, lng) {
+    if (!map) {
+        console.log("❌ map 객체 없음");
+        return;
+    }
+
+    // 기존 사용자 마커 제거
+    if (userMarker) {
+        userMarker.setMap(null);
+    }
+
+    // 사용자 위치 마커 아이콘 (파란 아이콘)
+    const markerImage = new kakao.maps.MarkerImage(
+        "https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png",
+        new kakao.maps.Size(24, 35)
+    );
+
+    // 새 마커 생성
+    userMarker = new kakao.maps.Marker({
+        position: new kakao.maps.LatLng(lat, lng),
+        map: map,
+        image: markerImage
+    });
+
+    // 지도 중앙으로 이동
+    map.setCenter(new kakao.maps.LatLng(lat, lng));
+
+    console.log("📍 사용자 위치 표시 완료:", lat, lng);
+}
 
 
   </script>
