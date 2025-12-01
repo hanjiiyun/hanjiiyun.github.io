@@ -10,6 +10,29 @@
   <style>
     html, body { margin:0; padding:0; height:100%; }
     #map { width:100%; height:100vh; }
+
+    /* ⭐ 폴리라인 위 러너 아이콘 (회전용) */
+    .user-dir-marker {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background-color: #00C853;
+      border: 3px solid white;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+
+    .user-dir-marker-inner {
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 10px solid white; /* 작은 삼각형 화살표 */
+      transform: translateY(-1px);
+    }
   </style>
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf"></script>
 </head>
@@ -22,7 +45,9 @@
   var routeLine = null;
   var startMarker = null;
   var endMarker = null;
-  var userMarker = null;
+  var userMarker = null;           // 파란 핀
+  var userDirectionOverlay = null; // ⭐ 폴리라인 위 러너 아이콘
+  var lastHeadingDeg = 0;
 
   // 지도 생성
   (function initMap() {
@@ -90,7 +115,7 @@
     console.log("✅ 폴리라인/마커 표시 완료");
   };
 
-  // Flutter에서 호출: 현재 위치 표시
+  // Flutter에서 호출: 현재 위치 표시 (파란 핀)
   window.showUserLocation = function(lat, lng) {
     console.log("📡 showUserLocation 호출됨:", lat, lng);
 
@@ -120,9 +145,64 @@
       console.log("✅ userMarker 위치 갱신");
     }
 
-    map.setCenter(pos);
+    // 필요하면 현재 위치로 지도 중심 이동
+    // map.setCenter(pos);
   };
-</script>
 
+  // ⭐ Flutter에서 호출: 폴리라인 위 러너 아이콘(방향 표시) 업데이트
+  window.updateRunnerOnRoute = function(lat, lng, headingDeg) {
+    console.log("📡 updateRunnerOnRoute:", lat, lng, headingDeg);
+
+    if (!map) {
+      console.log("❌ map 객체 없음 (updateRunnerOnRoute)");
+      return;
+    }
+
+    var nLat = Number(lat);
+    var nLng = Number(lng);
+    var nHeading = Number(headingDeg);
+
+    if (isNaN(nLat) || isNaN(nLng)) {
+      console.log("❌ lat/lng 숫자 변환 실패 (runner):", lat, lng);
+      return;
+    }
+    if (isNaN(nHeading)) {
+      nHeading = 0;
+    }
+
+    lastHeadingDeg = nHeading;
+
+    var pos = new kakao.maps.LatLng(nLat, nLng);
+
+    // CSS로 회전 적용
+    var content =
+      '<div class="user-dir-marker" style="transform: rotate(' + nHeading + 'deg);">' +
+        '<div class="user-dir-marker-inner"></div>' +
+      '</div>';
+
+    if (!userDirectionOverlay) {
+      userDirectionOverlay = new kakao.maps.CustomOverlay({
+        position: pos,
+        content: content,
+        zIndex: 5
+      });
+      userDirectionOverlay.setMap(map);
+      console.log("✅ userDirectionOverlay 생성");
+    } else {
+      userDirectionOverlay.setPosition(pos);
+      userDirectionOverlay.setContent(content);
+      console.log("✅ userDirectionOverlay 갱신");
+    }
+  };
+
+  // ⭐ Flutter에서 호출: 러너 아이콘 숨기기 (코스 이탈/코스 없음)
+  window.hideRunnerOnRoute = function() {
+    console.log("📡 hideRunnerOnRoute 호출됨");
+    if (userDirectionOverlay) {
+      userDirectionOverlay.setMap(null);
+      userDirectionOverlay = null;
+    }
+  };
+  </script>
 </body>
 </html>
