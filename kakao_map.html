@@ -17,126 +17,112 @@
   <div id="map"></div>
 
   <script>
-    // 🔹 전역 변수
-    var map;
-    var routeLine = null;
-    var startMarker = null;
-    var endMarker = null;
-    var userMarker = null;   // 내 위치 마커
+  // 전역 변수
+  var map;
+  var routeLine = null;
+  var startMarker = null;
+  var endMarker = null;
+  var userMarker = null;
 
-    // 🔹 지도 생성
-    (function initMap() {
-      const container = document.getElementById('map');
-      const options = {
-        center: new kakao.maps.LatLng(37.4507, 126.6530), // 인하대 근처
-        level: 3
-      };
-      map = new kakao.maps.Map(container, options);
-      console.log("🗺 map 초기화 완료");
-    })();
-
-    // ------------------------------------------------
-    // 🔹 Flutter에서 호출: 추천 경로 표시 (전역에 노출)
-    // ------------------------------------------------
-    window.showRecommendedRoute = function(routeData) {
-      console.log("📡 showRecommendedRoute 호출됨, 받은 데이터:", routeData);
-
-      if (!routeData || !Array.isArray(routeData.polyline)) {
-        console.log("⚠ polyline 배열이 없습니다. keys:", Object.keys(routeData || {}));
-        return;
-      }
-
-      console.log("📍 polyline 길이:", routeData.polyline.length);
-
-      var linePath = routeData.polyline.map(function(p) {
-        var lat = Number(p.lat);
-        var lng = Number(p.lng);
-        return new kakao.maps.LatLng(lat, lng);
-      });
-
-      if (linePath.length === 0) {
-        console.log("⚠ linePath가 비어 있습니다.");
-        return;
-      }
-
-      // 기존 경로/마커 제거
-      if (routeLine) {
-        routeLine.setMap(null);
-      }
-      if (startMarker) startMarker.setMap(null);
-      if (endMarker) endMarker.setMap(null);
-
-      // 폴리라인 그리기
-      routeLine = new kakao.maps.Polyline({
-        map: map,
-        path: linePath,
-        strokeWeight: 5,
-        strokeColor: '#00C853',
-        strokeOpacity: 0.9,
-        strokeStyle: 'solid'
-      });
-
-      // 시작/끝 마커
-      var startPos = linePath[0];
-      var endPos = linePath[linePath.length - 1];
-
-      startMarker = new kakao.maps.Marker({
-        map: map,
-        position: startPos
-      });
-
-      endMarker = new kakao.maps.Marker({
-        map: map,
-        position: endPos
-      });
-
-      // 전체 경로 보이도록 bounds 맞추기
-      var bounds = new kakao.maps.LatLngBounds();
-      linePath.forEach(function (pos) {
-        bounds.extend(pos);
-      });
-      map.setBounds(bounds);
-
-      console.log("✅ 폴리라인/마커 표시 완료");
+  // 지도 생성
+  (function initMap() {
+    const container = document.getElementById('map');
+    const options = {
+      center: new kakao.maps.LatLng(37.4507, 126.6530),
+      level: 3
     };
+    map = new kakao.maps.Map(container, options);
+    console.log("🗺 map 초기화 완료");
+  })();
 
-    // ------------------------------------------------
-    // 🔵 Flutter에서 호출: 사용자 현재 위치 표시 (전역에 노출)
-    // ------------------------------------------------
-    window.showUserLocation = function(lat, lng) {
-      console.log("📡 showUserLocation 호출됨:", lat, lng);
+  // Flutter에서 호출: 추천 경로
+  window.showRecommendedRoute = function(routeData) {
+    console.log("📡 showRecommendedRoute 호출됨:", routeData);
 
-      if (!map) {
-        console.log("❌ map 객체 없음");
-        return;
-      }
+    if (!routeData || !Array.isArray(routeData.polyline)) {
+      console.log("⚠ polyline 배열 없음");
+      return;
+    }
 
-      // lat/lng가 숫자인지 한 번 찍어보기
-      var nLat = Number(lat);
-      var nLng = Number(lng);
-      if (isNaN(nLat) || isNaN(nLng)) {
-        console.log("❌ lat/lng 숫자 변환 실패:", lat, lng);
-        return;
-      }
+    var linePath = routeData.polyline.map(function(p) {
+      var lat = Number(p.lat);
+      var lng = Number(p.lng);
+      return new kakao.maps.LatLng(lat, lng);
+    });
 
-      var pos = new kakao.maps.LatLng(nLat, nLng);
+    if (linePath.length === 0) {
+      console.log("⚠ linePath 비어 있음");
+      return;
+    }
 
-      // 처음 한 번만 마커 생성
-      if (!userMarker) {
-        userMarker = new kakao.maps.Marker({
-          map: map,
-          position: pos,
-          zIndex: 3
-        });
-        console.log("✅ userMarker 생성");
-      } else {
-        userMarker.setPosition(pos);
-        console.log("✅ userMarker 위치 갱신");
-      }
+    if (routeLine) routeLine.setMap(null);
+    if (startMarker) startMarker.setMap(null);
+    if (endMarker) endMarker.setMap(null);
 
-      // 지도 중앙 이동
-      map.setCenter(pos);
-    };
-  </script>
+    routeLine = new kakao.maps.Polyline({
+      map: map,
+      path: linePath,
+      strokeWeight: 5,
+      strokeColor: '#00C853',
+      strokeOpacity: 0.9,
+      strokeStyle: 'solid'
+    });
+
+    var startPos = linePath[0];
+    var endPos = linePath[linePath.length - 1];
+
+    startMarker = new kakao.maps.Marker({
+      map: map,
+      position: startPos
+    });
+
+    endMarker = new kakao.maps.Marker({
+      map: map,
+      position: endPos
+    });
+
+    var bounds = new kakao.maps.LatLngBounds();
+    linePath.forEach(function(pos) {
+      bounds.extend(pos);
+    });
+    map.setBounds(bounds);
+
+    console.log("✅ 폴리라인/마커 표시 완료");
+  };
+
+  // Flutter에서 호출: 현재 위치 표시
+  window.showUserLocation = function(lat, lng) {
+    console.log("📡 showUserLocation 호출됨:", lat, lng);
+
+    if (!map) {
+      console.log("❌ map 객체 없음");
+      return;
+    }
+
+    var nLat = Number(lat);
+    var nLng = Number(lng);
+    if (isNaN(nLat) || isNaN(nLng)) {
+      console.log("❌ lat/lng 숫자 변환 실패:", lat, lng);
+      return;
+    }
+
+    var pos = new kakao.maps.LatLng(nLat, nLng);
+
+    if (!userMarker) {
+      userMarker = new kakao.maps.Marker({
+        map: map,
+        position: pos,
+        zIndex: 3
+      });
+      console.log("✅ userMarker 생성");
+    } else {
+      userMarker.setPosition(pos);
+      console.log("✅ userMarker 위치 갱신");
+    }
+
+    map.setCenter(pos);
+  };
+</script>
+
 </body>
 </html>
