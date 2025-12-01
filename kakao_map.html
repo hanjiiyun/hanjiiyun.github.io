@@ -17,11 +17,15 @@
   <div id="map"></div>
 
   <script>
-    // 🔹 전역 변수 (다른 함수에서도 쓸 수 있도록 var로 선언)
+    // 🔹 전역 변수
     var map;
     var routeLine = null;
     var startMarker = null;
     var endMarker = null;
+
+    // 🔹 내 위치 마커
+    var userMarker = null;
+    var userMarkerImage = null;
 
     // 🔹 지도 생성
     (function initMap() {
@@ -31,113 +35,115 @@
         level: 3
       };
       map = new kakao.maps.Map(container, options);
+
+      // ✅ 내 위치 마커 아이콘(폴리라인 두께에 맞춰 크기 조정)
+      userMarkerImage = new kakao.maps.MarkerImage(
+        "https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png",
+        new kakao.maps.Size(24, 24),                // 폴리라인 strokeWeight=5에 어울리는 크기
+        { offset: new kakao.maps.Point(12, 12) }    // 아이콘 중심 기준
+      );
     })();
 
-    // 🔹 Flutter에서 호출하는 함수: 추천 경로 표시
-   // 🔹 Flutter에서 호출하는 함수: 추천 경로 표시
-function showRecommendedRoute(routeData) {
-  console.log("📡 받은 원본 데이터:", routeData);
-  console.log("📍 start:", routeData.start.lat, routeData.start.lng);
-  console.log("📍 first poly:", routeData.polyline[0].lat, routeData.polyline[0].lng);
+    // -----------------------------
+    // 🔹 Flutter에서 호출: 추천 경로 표시
+    // -----------------------------
+    function showRecommendedRoute(routeData) {
+      console.log("📡 받은 원본 데이터:", routeData);
 
+      // 1) polyline 유효성 체크
+      if (!routeData || !Array.isArray(routeData.polyline)) {
+        console.log("⚠ polyline 배열이 없습니다. keys:", Object.keys(routeData || {}));
+        return;
+      }
 
-  // 1) polyline 유효성 체크
-  if (!routeData || !Array.isArray(routeData.polyline)) {
-    console.log("⚠ polyline 배열이 없습니다. keys:", Object.keys(routeData || {}));
-    return;
-  }
+      console.log("📍 polyline 길이:", routeData.polyline.length);
 
-  console.log("📍 polyline 길이:", routeData.polyline.length);
+      // 2) LatLng 배열로 변환
+      var linePath = routeData.polyline.map(function(p) {
+        // 숫자로 한 번 강제 변환 (혹시 문자열이면 대비)
+        var lat = Number(p.lat);
+        var lng = Number(p.lng);
+        return new kakao.maps.LatLng(lat, lng);
+      });
 
-  // 2) LatLng 배열로 변환
-  var linePath = routeData.polyline.map(function(p) {
-    // 숫자로 한 번 강제 변환 (혹시 문자열이면 대비)
-    var lat = Number(p.lat);
-    var lng = Number(p.lng);
-    return new kakao.maps.LatLng(lat, lng);
-  });
+      if (linePath.length === 0) {
+        console.log("⚠ linePath가 비어 있습니다.");
+        return;
+      }
 
-  if (linePath.length === 0) {
-    console.log("⚠ linePath가 비어 있습니다.");
-    return;
-  }
+      // 3) 기존 경로/마커 제거
+      if (routeLine) {
+        routeLine.setMap(null);
+      }
+      if (startMarker) startMarker.setMap(null);
+      if (endMarker) endMarker.setMap(null);
 
-  // 3) 기존 경로/마커 제거
-  if (routeLine) {
-    routeLine.setMap(null);
-  }
-  if (startMarker) startMarker.setMap(null);
-  if (endMarker) endMarker.setMap(null);
+      // 4) 새 Polyline 생성 (초록색)
+      routeLine = new kakao.maps.Polyline({
+        map: map,
+        path: linePath,
+        strokeWeight: 5,
+        strokeColor: '#00C853',
+        strokeOpacity: 0.9,
+        strokeStyle: 'solid'
+      });
 
-  // 4) 새 Polyline 생성 (초록색)
-  routeLine = new kakao.maps.Polyline({
-    map: map,
-    path: linePath,
-    strokeWeight: 5,
-    strokeColor: '#00C853',
-    strokeOpacity: 0.9,
-    strokeStyle: 'solid'
-  });
+      // 5) 시작/끝 마커
+      var startPos = linePath[0];
+      var endPos = linePath[linePath.length - 1];
 
-  // 5) 시작/끝 마커
-  var startPos = linePath[0];
-  var endPos = linePath[linePath.length - 1];
+      startMarker = new kakao.maps.Marker({
+        map: map,
+        position: startPos,
+        zIndex: 2
+      });
 
-  startMarker = new kakao.maps.Marker({
-    map: map,
-    position: startPos
-  });
+      endMarker = new kakao.maps.Marker({
+        map: map,
+        position: endPos,
+        zIndex: 2
+      });
 
-  endMarker = new kakao.maps.Marker({
-    map: map,
-    position: endPos
-  });
+      // 6) 화면을 전체 경로에 맞추기 (가장 확실하게 보이게)
+      var bounds = new kakao.maps.LatLngBounds();
+      linePath.forEach(function (pos) {
+        bounds.extend(pos);
+      });
+      map.setBounds(bounds);
 
-  // 6) 화면을 전체 경로에 맞추기 (가장 확실하게 보이게)
-  var bounds = new kakao.maps.LatLngBounds();
-  linePath.forEach(function (pos) {
-    bounds.extend(pos);
-  });
-  map.setBounds(bounds);
+      console.log("✅ 폴리라인/마커 표시 완료");
+    }
 
-  console.log("✅ 폴리라인/마커 표시 완료");
-}
-// ==========================
-// 🔵 사용자 현재 위치 마커 표시 함수
-// ==========================
-let userMarker = null;
-
-function showUserLocation(lat, lng) {
-    if (!map) {
+    // -----------------------------
+    // 🔵 Flutter에서 호출: 사용자 현재 위치 표시
+    // -----------------------------
+    function showUserLocation(lat, lng) {
+      if (!map) {
         console.log("❌ map 객체 없음");
         return;
+      }
+
+      var pos = new kakao.maps.LatLng(lat, lng);
+
+      // 처음 호출이면 마커 생성
+      if (!userMarker) {
+        userMarker = new kakao.maps.Marker({
+          position: pos,
+          map: map,
+          image: userMarkerImage,
+          zIndex: 3   // 폴리라인/출발·도착 마커보다 위에 보이게
+        });
+      } else {
+        // 이미 있으면 위치만 이동 (깜빡임 방지)
+        userMarker.setPosition(pos);
+      }
+
+      // 🔹 지도 중앙을 내 위치로 이동
+      //    (지도 확대/축소해도 항상 내 위치가 폴리라인과 같은 좌표계에서 같이 움직임)
+      map.setCenter(pos);
+
+      console.log("📍 사용자 위치 표시 완료:", lat, lng);
     }
-
-    // 기존 사용자 마커 제거
-    if (userMarker) {
-        userMarker.setMap(null);
-    }
-
-    // 사용자 위치 마커 아이콘 (파란 아이콘)
-    const markerImage = new kakao.maps.MarkerImage(
-        "https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png",
-        new kakao.maps.Size(24, 35)
-    );
-
-    // 새 마커 생성
-    userMarker = new kakao.maps.Marker({
-        position: new kakao.maps.LatLng(lat, lng),
-        map: map,
-        image: markerImage
-    });
-
-    // 지도 중앙으로 이동
-    map.setCenter(new kakao.maps.LatLng(lat, lng));
-
-    console.log("📍 사용자 위치 표시 완료:", lat, lng);
-}
-
-
   </script>
 </body>
 </html>
