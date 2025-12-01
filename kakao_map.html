@@ -116,38 +116,43 @@
   };
 
   // Flutter에서 호출: 현재 위치 표시 (파란 핀)
-  window.showUserLocation = function(lat, lng) {
-    console.log("📡 showUserLocation 호출됨:", lat, lng);
+ // Flutter에서 호출: 현재 위치 표시 (파란 핀)
+window.showUserLocation = function(lat, lng) {
+  console.log("📡 showUserLocation 호출됨:", lat, lng);
 
-    if (!map) {
-      console.log("❌ map 객체 없음");
-      return;
-    }
+  if (!map) {
+    console.log("❌ map 객체 없음");
+    return;
+  }
 
-    var nLat = Number(lat);
-    var nLng = Number(lng);
-    if (isNaN(nLat) || isNaN(nLng)) {
-      console.log("❌ lat/lng 숫자 변환 실패:", lat, lng);
-      return;
-    }
+  var nLat = Number(lat);
+  var nLng = Number(lng);
+  if (isNaN(nLat) || isNaN(nLng)) {
+    console.log("❌ lat/lng 숫자 변환 실패:", lat, lng);
+    return;
+  }
 
-    var pos = new kakao.maps.LatLng(nLat, nLng);
+  var pos = new kakao.maps.LatLng(nLat, nLng);
 
-    if (!userMarker) {
-      userMarker = new kakao.maps.Marker({
-        map: map,
-        position: pos,
-        zIndex: 3
-      });
-      console.log("✅ userMarker 생성");
-    } else {
-      userMarker.setPosition(pos);
-      console.log("✅ userMarker 위치 갱신");
-    }
+  if (!userMarker) {
+    userMarker = new kakao.maps.Marker({
+      map: map,
+      position: pos,
+      zIndex: 3
+    });
+    console.log("✅ userMarker 생성");
+  } else {
+    userMarker.setPosition(pos);
+    console.log("✅ userMarker 위치 갱신");
+  }
 
-    // 필요하면 현재 위치로 지도 중심 이동
-    // map.setCenter(pos);
-  };
+  // ⭐ 추천 시작 전(= 아직 routeLine 없음)에는
+  //    현재 위치를 화면 중앙으로 따라가게
+  if (!routeLine) {
+    map.setCenter(pos);
+  }
+};
+
 
   // ⭐ Flutter에서 호출: 폴리라인 위 러너 아이콘(방향 표시) 업데이트
   window.updateRunnerOnRoute = function(lat, lng, headingDeg) {
