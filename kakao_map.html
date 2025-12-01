@@ -209,12 +209,9 @@
     //   updateRouteProgress(lat, lng)
     //   - 현재 위치 기준으로
     //     지나간 구간: 흰색
-    //     남은 구간: 파란색
+    //     남은 구간: 파란색(네비)/초록(일반)
     // ================================
     window.updateRouteProgress = function(lat, lng) {
-      // 네비 모드가 아니면 굳이 안 나눠도 됨 (원하면 주석 해제)
-      // if (!isNavigationMode) return;
-
       if (!routeCoords || routeCoords.length === 0) {
         return;
       }
