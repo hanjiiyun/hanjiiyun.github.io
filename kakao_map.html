@@ -37,6 +37,9 @@
    // 🔹 Flutter에서 호출하는 함수: 추천 경로 표시
 function showRecommendedRoute(routeData) {
   console.log("📡 받은 원본 데이터:", routeData);
+  console.log("📍 start:", routeData.start.lat, routeData.start.lng);
+  console.log("📍 first poly:", routeData.polyline[0].lat, routeData.polyline[0].lng);
+
 
   // 1) polyline 유효성 체크
   if (!routeData || !Array.isArray(routeData.polyline)) {
