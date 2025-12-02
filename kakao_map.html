@@ -160,14 +160,13 @@
         // 흰색 베이스 라인
         if (routeCoords.length) {
           if (!routeLineBase) {
-            routeLineBase = new kakao.maps.Polyline({
+            routeLineRemain = new kakao.maps.Polyline({
               path: routeCoords,
-              strokeWeight: 10,
-              strokeColor: '#FFFFFF',
-              strokeOpacity: 0.9,
+              strokeWeight: 6,
+              strokeColor: '#A5D6A7',   // 💚 연두색 느낌
+              strokeOpacity: 0.96,
               strokeStyle: 'solid',
             });
-            routeLineBase.setMap(map);
           }
 
           // 남은 길 파란색/굵기
