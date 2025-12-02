@@ -216,55 +216,51 @@
     ========================================== */
     window.updateRunnerOnRoute = function(lat, lng, heading, onRoute) {
 
-      const pos = new kakao.maps.LatLng(lat, lng);
-      const proj = map.getProjection();
-      const point = proj.containerPointFromCoords(pos);
+  const pos = new kakao.maps.LatLng(lat, lng);
 
-      const color = (onRoute === true || onRoute === "true")
-        ? "#1E88E5"
-        : "#E53935";
+  const color = (onRoute === true || onRoute === "true")
+    ? "#1E88E5"
+    : "#E53935";
 
-      const h = Number(heading || 0);
-      const offsetDeg = -18; /* 🔥 지윤이가 말한 각도 보정 */
+  const h = Number(heading || 0);
+  const offsetDeg = -18; /* 🔥 지윤이가 말한 각도 보정 */
 
-      // 최초 생성
-      if (!runnerOverlay) {
+  // 최초 생성
+  if (!runnerOverlay) {
 
-        runnerWrapperDiv = document.createElement("div");
-        runnerWrapperDiv.className = "runner-wrapper";
+    runnerWrapperDiv = document.createElement("div");
+    runnerWrapperDiv.className = "runner-wrapper";
 
-        const html = `
-          <div class="user-dir-marker-outer" id="runnerOuter">
-            <div class="user-dir-marker-core" id="runnerCore" style="background:${color};"></div>
-            <div class="user-dir-marker-arrow"></div>
-          </div>
-        `;
+    const html = `
+      <div class="user-dir-marker-outer" id="runnerOuter">
+        <div class="user-dir-marker-core" id="runnerCore" style="background:${color};"></div>
+        <div class="user-dir-marker-arrow"></div>
+      </div>
+    `;
 
-        runnerWrapperDiv.innerHTML = html;
+    runnerWrapperDiv.innerHTML = html;
 
-        runnerOverlay = new kakao.maps.CustomOverlay({
-          position: pos,
-          content: runnerWrapperDiv,
-          zIndex: 5
-        });
-        runnerOverlay.setMap(map);
+    runnerOverlay = new kakao.maps.CustomOverlay({
+      position: pos,
+      content: runnerWrapperDiv,
+      zIndex: 5
+    });
+    runnerOverlay.setMap(map);
 
-      } else {
-        runnerOverlay.setPosition(pos);
-      }
+  } else {
+    // 📍 Kakao가 지도 좌표 → 화면 위치 처리하도록, 이것만 해주면 됨
+    runnerOverlay.setPosition(pos);
+  }
 
-      // 🎯 CSS transform 기반으로 자연스럽게 이동
-      runnerWrapperDiv.style.transform =
-        `translate3d(${point.x - 17}px, ${point.y - 17}px, 0)`; // 중심 맞춤
+  // 회전 (부드러운 회전은 CSS transition으로 처리)
+  const outer = runnerWrapperDiv.querySelector("#runnerOuter");
+  outer.style.transform = `rotate(${h + offsetDeg}deg)`;
 
-      // 회전
-      const outer = runnerWrapperDiv.querySelector("#runnerOuter");
-      outer.style.transform = `rotate(${h + offsetDeg}deg)`;
+  // 색상 변경
+  const core = runnerWrapperDiv.querySelector("#runnerCore");
+  core.style.background = color;
+};
 
-      // 색상 변경
-      const core = runnerWrapperDiv.querySelector("#runnerCore");
-      core.style.background = color;
-    };
 
 
     /* ==========================================
