@@ -13,6 +13,7 @@
 
     /* ⭐ 러너 아이콘 (회전 + 색상 변경) */
     /* 📍 현재 위치 러너 아이콘 (파란 동그라미 + 화살표 + 주변 번짐) */
+/* 📍 현재 위치 러너 아이콘 (파란 동그라미 + 방향 삼각형 + 번짐) */
 .user-dir-marker-outer {
   width: 40px;
   height: 40px;
@@ -24,28 +25,31 @@
   box-sizing: border-box;
 }
 
+/* 안쪽 파란 동그라미 */
 .user-dir-marker-core {
+  position: relative;             /* ⬅ 삼각형 기준이 되는 부모 */
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #1E88E5;              /* 안쪽 진한 파랑 */
-  border: 3px solid #FFFFFF;        /* 흰색 링 */
+  background: #1E88E5;            /* 기본 파랑 (JS에서 바꿀 예정) */
+  border: 3px solid #FFFFFF;      /* 흰색 링 */
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   box-sizing: border-box;
 }
 
-/* 아래쪽에 붙는 작은 방향 삼각형 */
+/* 아래에 딱 붙는 방향 삼각형 */
 .user-dir-marker-arrow {
+  position: absolute;
+  left: 50%;
+  bottom: -8px;                   /* 동그라미 아래로 살짝 나가게 */
+  transform: translateX(-50%);    /* 가운데 정렬 */
   width: 0;
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
   border-top: 9px solid #FFFFFF;  /* 흰색 삼각형 */
-  transform: translateY(6px);     /* 동그라미 아래로 살짝 내리기 */
 }
+
 
   </style>
 
