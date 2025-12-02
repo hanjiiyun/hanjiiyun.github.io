@@ -223,11 +223,9 @@
     : "#E53935";
 
   const h = Number(heading || 0);
-  const offsetDeg = -18; /* 🔥 지윤이가 말한 각도 보정 */
+  const offsetDeg = -18;
 
-  // 최초 생성
   if (!runnerOverlay) {
-
     runnerWrapperDiv = document.createElement("div");
     runnerWrapperDiv.className = "runner-wrapper";
 
@@ -237,7 +235,6 @@
         <div class="user-dir-marker-arrow"></div>
       </div>
     `;
-
     runnerWrapperDiv.innerHTML = html;
 
     runnerOverlay = new kakao.maps.CustomOverlay({
@@ -246,21 +243,16 @@
       zIndex: 5
     });
     runnerOverlay.setMap(map);
-
   } else {
-    // 📍 Kakao가 지도 좌표 → 화면 위치 처리하도록, 이것만 해주면 됨
     runnerOverlay.setPosition(pos);
   }
 
-  // 회전 (부드러운 회전은 CSS transition으로 처리)
   const outer = runnerWrapperDiv.querySelector("#runnerOuter");
   outer.style.transform = `rotate(${h + offsetDeg}deg)`;
 
-  // 색상 변경
   const core = runnerWrapperDiv.querySelector("#runnerCore");
   core.style.background = color;
 };
-
 
 
     /* ==========================================
