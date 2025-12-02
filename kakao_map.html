@@ -347,15 +347,40 @@
        러너 숨기기
     ========================================== */
     window.hideRunnerOnRoute = function() {
-      if (runnerOverlay) {
-        runnerOverlay.setMap(null);
-        runnerOverlay = null;
-      }
-      if (routeArrows.length) {
-        routeArrows.forEach(a => a.setMap(null));
-        routeArrows = [];
-      }
-    };
+  // 러너 아이콘 제거
+  if (runnerOverlay) {
+    runnerOverlay.setMap(null);
+    runnerOverlay = null;
+  }
+
+  // 방향 화살표 제거
+  if (routeArrows.length) {
+    routeArrows.forEach(a => a.setMap(null));
+    routeArrows = [];
+  }
+
+  // ✅ 폴리라인 / 출발·도착 마커도 같이 제거
+  if (routeLineDone) {
+    routeLineDone.setMap(null);
+    routeLineDone = null;
+  }
+  if (routeLineRemain) {
+    routeLineRemain.setMap(null);
+    routeLineRemain = null;
+  }
+  if (startMarker) {
+    startMarker.setMap(null);
+    startMarker = null;
+  }
+  if (endMarker) {
+    endMarker.setMap(null);
+    endMarker = null;
+  }
+
+  // 남아있는 경로 좌표도 초기화
+  routeCoords = [];
+};
+
   </script>
 </body>
 </html>
