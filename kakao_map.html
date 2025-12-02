@@ -2,22 +2,21 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>R2U Kakao Map</title>
+
   <style>
-    html, body { margin:0; padding:0; height:100%; }
+    html, body {
+      margin:0; padding:0; height:100%;
+    }
     #map { width:100%; height:100vh; }
 
-    /* ⭐ 폴리라인 위 러너 아이콘 (회전용 기본 스타일)
-       - 실제 색은 JS에서 inline style(background-color)로 바꿔줌 */
+    /* ⭐ 러너 아이콘 (회전 + 색상 변경) */
     .user-dir-marker {
       width: 26px;
       height: 26px;
       border-radius: 50%;
-      background-color: #00C853; /* 기본 초록 */
+      background-color: #00C853;
       border: 3px solid white;
       box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
       display: flex;
@@ -31,44 +30,40 @@
       height: 0;
       border-left: 6px solid transparent;
       border-right: 6px solid transparent;
-      border-bottom: 10px solid white; /* 작은 삼각형 화살표 */
+      border-bottom: 10px solid white;
       transform: translateY(-1px);
     }
   </style>
 
-  <!-- ⚠ geometry 라이브러리 추가 (지나간/남은 구간 계산용) -->
+  <!-- geometry 라이브러리 포함 -->
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry"></script>
 </head>
+
 <body>
   <div id="map"></div>
 
   <script>
-    // ================================
-    // 전역 변수
-    // ================================
-    var map;
+    /* ======================================================
+       전역 변수
+    ====================================================== */
+    let map;
 
-    // 경로 관련
-    var routeCoords = [];        // 전체 폴리라인 좌표
-    var routeLineDone = null;    // 이미 지난 구간(하얀색)
-    var routeLineRemain = null;  // 아직 남은 구간(파란/초록색)
-    var startMarker = null;
-    var endMarker = null;
+    let routeCoords = [];
+    let routeLineDone = null;      // 지나온 구간 (회색)
+    let routeLineRemain = null;    // 남은 구간 (초록/파랑)
+    let startMarker = null;
+    let endMarker = null;
 
-    // 사용자 위치
-    var userMarker = null;           // 실제 GPS 위치(파란 핀)
-    var userDirectionOverlay = null; // 폴리라인 위 러너 아이콘(회전 + 색)
-    var lastHeadingDeg = 0;
+    let userDirectionOverlay = null;
+    let lastHeadingDeg = 0;
+    let isNavigationMode = false;
 
-    // 네비게이션 모드 여부 (Flutter에서 setNavigationMode로 변경)
-    var isNavigationMode = false;
-
-    // ================================
-    // 지도 생성 (즉시 실행)
-    // ================================
+    /* ======================================================
+       지도 초기화
+    ====================================================== */
     (function initMap() {
-      var container = document.getElementById('map');
-      var options = {
+      const container = document.getElementById('map');
+      const options = {
         center: new kakao.maps.LatLng(37.4507, 126.6530),
         level: 3
       };
@@ -76,53 +71,44 @@
       console.log("🗺 map 초기화 완료");
     })();
 
-    // ================================
-    // Flutter → JS : 네비게이션 모드 on/off
-    // ================================
+    /* ======================================================
+       네비게이션 모드 변경
+    ====================================================== */
     window.setNavigationMode = function(isNav) {
       isNavigationMode = !!isNav;
       console.log("🚦 setNavigationMode:", isNavigationMode);
 
-      // 네비 모드에 따라 남은 구간 폴리라인 색/두께 살짝 변경
       if (routeLineRemain) {
         routeLineRemain.setOptions({
-          strokeColor: isNavigationMode ? '#1976D2' : '#00C853', // 네비 중엔 파란색 느낌
+          strokeColor: isNavigationMode ? '#1976D2' : '#00C853',
           strokeWeight: isNavigationMode ? 6 : 5
         });
       }
     };
 
-    // ================================
-    // Flutter → JS : 추천 경로 그리기
-    //   showRecommendedRoute(JSON)
-    // ================================
+    /* ======================================================
+       추천 경로 그리기
+    ====================================================== */
     window.showRecommendedRoute = function(routeData) {
-      console.log("📡 showRecommendedRoute 호출:", routeData);
+      console.log("📡 showRecommendedRoute:", routeData);
 
       if (!routeData || !Array.isArray(routeData.polyline)) {
-        console.log("⚠ polyline 배열 없음");
+        console.log("⚠ polyline 없음");
         return;
       }
 
-      // 전체 경로 좌표 배열로 변환
-      routeCoords = routeData.polyline.map(function(p) {
-        var lat = Number(p.lat);
-        var lng = Number(p.lng);
-        return new kakao.maps.LatLng(lat, lng);
+      // 전체 좌표 변환
+      routeCoords = routeData.polyline.map(p => {
+        return new kakao.maps.LatLng(Number(p.lat), Number(p.lng));
       });
 
-      if (!routeCoords || routeCoords.length === 0) {
-        console.log("⚠ routeCoords 비어 있음");
-        return;
-      }
-
-      // 기존 폴리라인/마커 제거
+      // 기존 요소 제거
       if (routeLineDone) routeLineDone.setMap(null);
       if (routeLineRemain) routeLineRemain.setMap(null);
       if (startMarker) startMarker.setMap(null);
       if (endMarker) endMarker.setMap(null);
 
-      // 처음에는 "남은 구간"만 전체 경로로 표시 (초록)
+      // 남은 구간 (초록)
       routeLineRemain = new kakao.maps.Polyline({
         path: routeCoords,
         strokeWeight: 5,
@@ -132,107 +118,49 @@
       });
       routeLineRemain.setMap(map);
 
-      // 이미 지난 구간(하얀색)은 비워둔다
+      // 지나온 구간(초기 빈 값)
       routeLineDone = new kakao.maps.Polyline({
         path: [],
-        strokeWeight: 5,
-        strokeColor: '#FFFFFF',
-        strokeOpacity: 0.0,
+        strokeWeight: 6,
+        strokeColor: '#555555',
+        strokeOpacity: 0.9,
         strokeStyle: 'solid'
       });
 
       // 시작/도착 마커
-      var startPos = routeCoords[0];
-      var endPos = routeCoords[routeCoords.length - 1];
-
       startMarker = new kakao.maps.Marker({
         map: map,
-        position: startPos
+        position: routeCoords[0]
       });
 
       endMarker = new kakao.maps.Marker({
         map: map,
-        position: endPos
+        position: routeCoords[routeCoords.length - 1]
       });
 
-      // 경로 전체가 보이도록 bounds 설정
-      var bounds = new kakao.maps.LatLngBounds();
-      routeCoords.forEach(function(pos) {
-        bounds.extend(pos);
-      });
+      // 전체 경로 보이게
+      const bounds = new kakao.maps.LatLngBounds();
+      routeCoords.forEach(pos => bounds.extend(pos));
       map.setBounds(bounds);
-
-      console.log("✅ 폴리라인/마커 표시 완료");
     };
 
-    // ================================
-    // Flutter → JS : 현재 위치 표시 (파란 핀)
-    //   showUserLocation(lat, lng)
-    // ================================
-    window.showUserLocation = function(lat, lng) {
-      console.log("📡 showUserLocation:", lat, lng);
-
-      if (!map) {
-        console.log("❌ map 객체 없음");
-        return;
-      }
-
-      var nLat = Number(lat);
-      var nLng = Number(lng);
-      if (isNaN(nLat) || isNaN(nLng)) {
-        console.log("❌ lat/lng 숫자 변환 실패:", lat, lng);
-        return;
-      }
-
-      var pos = new kakao.maps.LatLng(nLat, nLng);
-
-      if (!userMarker) {
-        userMarker = new kakao.maps.Marker({
-          map: map,
-          position: pos,
-          zIndex: 3
-        });
-        console.log("✅ userMarker 생성");
-      } else {
-        userMarker.setPosition(pos);
-        console.log("✅ userMarker 위치 갱신");
-      }
-
-      // 아직 추천 경로 없으면 내 위치를 화면 중앙으로
-      if (!routeCoords || routeCoords.length === 0) {
-        map.setCenter(pos);
-      }
-    };
-
-    // ================================
-    // Flutter → JS : 경로 진행 상태 업데이트
-    //   updateRouteProgress(lat, lng)
-    //   - 현재 위치 기준으로
-    //     지나간 구간: 흰색
-    //     남은 구간: 파란색(네비)/초록(일반)
-    // ================================
+    /* ======================================================
+       지나온 길/남은 길 갱신
+    ====================================================== */
     window.updateRouteProgress = function(lat, lng) {
-      if (!routeCoords || routeCoords.length === 0) {
-        return;
-      }
+      if (!routeCoords.length) return;
 
-      var nLat = Number(lat);
-      var nLng = Number(lng);
-      if (isNaN(nLat) || isNaN(nLng)) {
-        console.log("❌ lat/lng 숫자 변환 실패 (updateRouteProgress):", lat, lng);
-        return;
-      }
+      const nLat = Number(lat);
+      const nLng = Number(lng);
+      const current = new kakao.maps.LatLng(nLat, nLng);
 
-      var current = new kakao.maps.LatLng(nLat, nLng);
+      // 폴리라인에서 가장 가까운 index 찾기
+      let idx = 0;
+      let minDist = Infinity;
 
-      // 현재 위치와 가장 가까운 경로 상의 index 찾기
-      var idx = 0;
-      var minDist = Number.MAX_VALUE;
-
-      for (var i = 0; i < routeCoords.length; i++) {
-        var d = kakao.maps.geometry.spherical.computeDistanceBetween(
-          current,
-          routeCoords[i]
+      for (let i = 0; i < routeCoords.length; i++) {
+        const d = kakao.maps.geometry.spherical.computeDistanceBetween(
+          current, routeCoords[i]
         );
         if (d < minDist) {
           minDist = d;
@@ -240,24 +168,24 @@
         }
       }
 
-      var donePath = routeCoords.slice(0, idx + 1);
-      var remainPath = routeCoords.slice(idx);
+      const donePath = routeCoords.slice(0, idx + 1);
+      const remainPath = routeCoords.slice(idx);
 
       if (routeLineDone) routeLineDone.setMap(null);
       if (routeLineRemain) routeLineRemain.setMap(null);
 
-      // 이미 지난 구간: 흰색
+      // 지나온 구간 = 회색
       routeLineDone = new kakao.maps.Polyline({
         path: donePath,
         strokeWeight: 6,
-        strokeColor: '#FFFFFF',
+        strokeColor: '#555555',
         strokeOpacity: 0.9,
         strokeStyle: 'solid'
       });
       routeLineDone.setMap(map);
 
-      // 남은 구간: 파란색(네비 모드) / 초록(일반)
-      var remainColor = isNavigationMode ? '#1976D2' : '#00C853';
+      // 남은 구간
+      const remainColor = isNavigationMode ? '#1976D2' : '#00C853';
 
       routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
@@ -269,55 +197,34 @@
       routeLineRemain.setMap(map);
     };
 
-    // ================================
-    // Flutter → JS : 폴리라인 위 러너 아이콘 업데이트
-    //   updateRunnerOnRoute(lat, lng, headingDeg, onRoute)
-    //
-    //   - 네비 X : 항상 초록
-    //   - 네비 O + onRoute = true  → 파란색
-    //   - 네비 O + onRoute = false → 빨간색
-    // ================================
+    /* ======================================================
+       러너 아이콘 업데이트
+    ====================================================== */
     window.updateRunnerOnRoute = function(lat, lng, headingDeg, onRoute) {
       console.log("📡 updateRunnerOnRoute:", lat, lng, headingDeg, onRoute);
 
-      if (!map) {
-        console.log("❌ map 객체 없음 (updateRunnerOnRoute)");
-        return;
-      }
-
-      var nLat = Number(lat);
-      var nLng = Number(lng);
-      var nHeading = Number(headingDeg);
-
-      if (isNaN(nLat) || isNaN(nLng)) {
-        console.log("❌ lat/lng 숫자 변환 실패 (runner):", lat, lng);
-        return;
-      }
-      if (isNaN(nHeading)) {
-        nHeading = 0;
-      }
+      const nLat = Number(lat);
+      const nLng = Number(lng);
+      let nHeading = Number(headingDeg);
+      if (isNaN(nHeading)) nHeading = 0;
 
       lastHeadingDeg = nHeading;
-      var pos = new kakao.maps.LatLng(nLat, nLng);
+      const pos = new kakao.maps.LatLng(nLat, nLng);
 
-      // 🎨 배경색 결정
-      var bgColor = '#00C853'; // 기본 초록
-
+      // 색상 결정
+      let bgColor = "#00C853";     // 기본 초록
       if (isNavigationMode) {
-        if (onRoute) {
-          bgColor = '#2196F3'; // 코스 위: 파란색
-        } else {
-          bgColor = '#E53935'; // 코스 이탈: 빨간색
-        }
+        if (onRoute === true || onRoute === "true")
+          bgColor = "#2196F3";     // 코스 위 = 파랑
+        else
+          bgColor = "#E53935";     // 코스 이탈 = 빨강
       }
 
-      // CSS로 회전 + 색 적용
-      var content =
-        '<div class="user-dir-marker" ' +
-          'style="transform: rotate(' + nHeading + 'deg); ' +
-                 'background-color:' + bgColor + ';">' +
-          '<div class="user-dir-marker-inner"></div>' +
-        '</div>';
+      const content =
+        `<div class="user-dir-marker"
+              style="transform: rotate(${nHeading}deg); background-color:${bgColor};">
+           <div class="user-dir-marker-inner"></div>
+         </div>`;
 
       if (!userDirectionOverlay) {
         userDirectionOverlay = new kakao.maps.CustomOverlay({
@@ -326,20 +233,16 @@
           zIndex: 5
         });
         userDirectionOverlay.setMap(map);
-        console.log("✅ userDirectionOverlay 생성");
       } else {
         userDirectionOverlay.setPosition(pos);
         userDirectionOverlay.setContent(content);
-        console.log("✅ userDirectionOverlay 갱신");
       }
     };
 
-    // ================================
-    // Flutter → JS : 러너 아이콘 숨기기
-    //   hideRunnerOnRoute()
-    // ================================
+    /* ======================================================
+       러너 숨기기
+    ====================================================== */
     window.hideRunnerOnRoute = function() {
-      console.log("📡 hideRunnerOnRoute 호출됨");
       if (userDirectionOverlay) {
         userDirectionOverlay.setMap(null);
         userDirectionOverlay = null;
