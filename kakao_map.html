@@ -12,27 +12,41 @@
     #map { width:100%; height:100vh; }
 
     /* ⭐ 러너 아이콘 (회전 + 색상 변경) */
-    .user-dir-marker {
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background-color: #00C853;
-      border: 3px solid white;
-      box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-sizing: border-box;
-    }
+    /* 📍 현재 위치 러너 아이콘 (파란 동그라미 + 화살표 + 주변 번짐) */
+.user-dir-marker-outer {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(33, 150, 243, 0.25); /* 바깥 파란 번짐(halo) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
 
-    .user-dir-marker-inner {
-      width: 0;
-      height: 0;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-bottom: 10px solid white;
-      transform: translateY(-1px);
-    }
+.user-dir-marker-core {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1E88E5;              /* 안쪽 진한 파랑 */
+  border: 3px solid #FFFFFF;        /* 흰색 링 */
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* 아래쪽에 붙는 작은 방향 삼각형 */
+.user-dir-marker-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 9px solid #FFFFFF;  /* 흰색 삼각형 */
+  transform: translateY(6px);     /* 동그라미 아래로 살짝 내리기 */
+}
+
   </style>
 
   <!-- geometry 라이브러리 포함 -->
@@ -212,19 +226,28 @@
       const pos = new kakao.maps.LatLng(nLat, nLng);
 
       // 색상 결정
-      let bgColor = "#00C853";     // 기본 초록
-      if (isNavigationMode) {
-        if (onRoute === true || onRoute === "true")
-          bgColor = "#2196F3";     // 코스 위 = 파랑
-        else
-          bgColor = "#E53935";     // 코스 이탈 = 빨강
-      }
+     // 색상 결정 (코스 위/이탈 상태에 따라)
+let coreColor = "#1E88E5";  // 기본 파랑
 
-      const content =
-        `<div class="user-dir-marker"
-              style="transform: rotate(${nHeading}deg); background-color:${bgColor};">
-           <div class="user-dir-marker-inner"></div>
-         </div>`;
+if (isNavigationMode) {
+  if (onRoute === true || onRoute === "true") {
+    coreColor = "#1E88E5";  // 코스 위: 파랑
+  } else {
+    coreColor = "#E53935";  // 코스 이탈: 빨강
+  }
+}
+
+// HTML 구조: 바깥 번짐 + 안쪽 동그라미 + 삼각형
+const content = `
+  <div class="user-dir-marker-outer"
+       style="transform: rotate(${nHeading}deg);">
+    <div class="user-dir-marker-core"
+         style="background:${coreColor};">
+      <div class="user-dir-marker-arrow"></div>
+    </div>
+  </div>
+`;
+
 
       if (!userDirectionOverlay) {
         userDirectionOverlay = new kakao.maps.CustomOverlay({
@@ -251,3 +274,4 @@
   </script>
 </body>
 </html>
+flu
