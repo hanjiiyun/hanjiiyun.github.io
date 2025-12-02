@@ -174,7 +174,7 @@
         if (routeLineRemain) {
           routeLineRemain.setOptions({
             strokeWeight: 8,   // 🔍 네비 모드일 때만 조금 더 두껍게
-      // strokeColor 건드리지 않음!
+          strokeColor : '#76FF03'
           });
         }
 
@@ -189,7 +189,7 @@
         // 네비 종료 → 초록 라인으로 복귀
         if (routeLineRemain) {
           routeLineRemain.setOptions({
-            strokeColor: '#00C853',
+            strokeColor: '#76FF03',
             strokeWeight: 6,
           });
         }
@@ -285,7 +285,7 @@
       routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
         strokeWeight: isNavigationMode ? 8 : 6,
-        strokeColor: '#00C853',   // ✅ 아직 안 간 길: 연두색 고정
+        strokeColor: '#76FF03',   // ✅ 아직 안 간 길: 연두색 고정
         strokeOpacity: 0.96,
         strokeStyle: 'solid',
       });
