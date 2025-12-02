@@ -160,27 +160,32 @@
         // 흰색 베이스 라인
         if (routeCoords.length) {
           if (!routeLineBase) {
-            routeLineRemain = new kakao.maps.Polyline({
-              path: routeCoords,
-              strokeWeight: 6,
-              strokeColor: '#A5D6A7',   // 💚 연두색 느낌
-              strokeOpacity: 0.96,
-              strokeStyle: 'solid',
-            });
-          }
+            routeLineBase = new kakao.maps.Polyline({
+            path: routeCoords,
+            strokeWeight: 10,
+            strokeColor: '#FFFFFF',
+            strokeOpacity: 0.9,
+            strokeStyle: 'solid',
+          });
+          routeLineBase.setMap(map);
+       }
 
-          // 남은 길 파란색/굵기
-          if (routeLineRemain) {
-            routeLineRemain.setOptions({
-              strokeColor: '#1976D2',
-              strokeWeight: 8,
-            });
-          }
+  // 남은 길: 색은 그대로(연두색), 네비 중엔 살짝 더 두껍게만
+        if (routeLineRemain) {
+          routeLineRemain.setOptions({
+            strokeWeight: 8,   // 🔍 네비 모드일 때만 조금 더 두껍게
+      // strokeColor 건드리지 않음!
+          });
+        }
+
+  createRouteArrows(routeCoords);
+}
+
 
           // 방향 화살표 생성
           createRouteArrows(routeCoords);
         }
-      } else {
+       else {
         // 네비 종료 → 초록 라인으로 복귀
         if (routeLineRemain) {
           routeLineRemain.setOptions({
@@ -271,7 +276,7 @@
       routeLineDone = new kakao.maps.Polyline({
         path: donePath,
         strokeWeight: 7,
-        strokeColor: '#555555',
+        strokeColor: '#555555',   // ✅ 지나온 길: 회색
         strokeOpacity: 0.96,
         strokeStyle: 'solid',
       });
@@ -280,11 +285,12 @@
       routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
         strokeWeight: isNavigationMode ? 8 : 6,
-        strokeColor: isNavigationMode ? '#1976D2' : '#00C853',
+        strokeColor: '#A5D6A7',   // ✅ 아직 안 간 길: 연두색 고정
         strokeOpacity: 0.96,
         strokeStyle: 'solid',
       });
       routeLineRemain.setMap(map);
+
     };
 
     /* ========= 지도 자동 따라가기 ========= */
