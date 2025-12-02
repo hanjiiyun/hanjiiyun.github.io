@@ -20,13 +20,13 @@
     .runner-wrapper {
       position: absolute;
       transform: translate3d(0,0,0);
-      transition: transform 0.18s linear; /* 🔥 핵심: 자연스러운 이동 */
+      transition: transform 0.18s linear; /* 🔥 자연스러운 이동 */
       will-change: transform;
       pointer-events:none;
     }
 
     .user-dir-marker-outer {
-      width: 34px;      /* 🔹 네이버맵 크기 느낌 */
+      width: 34px;      /* 네이버맵 느낌 크기 */
       height: 34px;
       border-radius: 50%;
       background: rgba(33, 150, 243, 0.28);  /* 파란 번짐 */
@@ -39,7 +39,7 @@
     }
 
     .user-dir-marker-core {
-      width: 16px;      /* 🔹 동그라미 조금 더 작게 (네이버 비슷) */
+      width: 16px;
       height: 16px;
       border-radius: 50%;
       background: #1E88E5;
@@ -48,10 +48,10 @@
       position: relative;
     }
 
-    /* 삼각형 살짝 위로 띄우기 */
+    /* 삼각형 살짝 위로 띄우기 (위쪽이 진행방향 기본) */
     .user-dir-marker-arrow {
       position: absolute;
-      top: -14px;  /* 🔥 원 밖으로 완전히 올리기 */
+      top: -14px;  /* 원 밖으로 완전히 올리기 */
       left: 50%;
       transform: translateX(-50%);
       width: 0;
@@ -96,10 +96,10 @@
 
     let isNavigationMode = false;
 
-    // 🆕 화살표 오버레이들
+    // 방향 화살표 오버레이들
     let routeArrows = [];
 
-    // 🆕 기본 지도 레벨 저장 (네비 모드 끝나면 복원)
+    // 기본 지도 레벨 저장 (네비 모드 끝나면 복원)
     let defaultMapLevel = 3;
 
     /* ==========================================
@@ -111,7 +111,7 @@
         center: new kakao.maps.LatLng(37.4507, 126.6530),
         level: 3
       });
-      defaultMapLevel = map.getLevel(); // 🆕 현재 레벨 저장
+      defaultMapLevel = map.getLevel();
       console.log("🗺 지도 초기화됨");
     }
     initMap();
@@ -127,7 +127,6 @@
       }
       if (!coords || coords.length < 2) return;
 
-      // 너무 많이 찍히지 않게 간격 조절 (최대 25개 정도)
       const maxArrows = 25;
       const step = Math.max(1, Math.floor(coords.length / maxArrows));
 
@@ -139,10 +138,12 @@
         const dy = p2.getLat() - p1.getLat();
         const angleRad = Math.atan2(dy, dx);
         const angleDeg = angleRad * 180 / Math.PI;
+        // 🔥 화살표 기본이 "위쪽"이라, 벡터 각도에 맞추기 위해 약간 보정
+        const rotateDeg = angleDeg - 90;
 
         const html =
           `<div class="route-arrow" style="
-              transform: rotate(${angleDeg + 90}deg);
+              transform: rotate(${rotateDeg}deg);
               transform-origin: 50% 50%;
             "></div>`;
 
@@ -157,24 +158,27 @@
     }
 
     /* ==========================================
-       네비게이션 모드 색상변경 + 확대
+       네비게이션 모드
+       - 안내 시작 시 true
+       - 안내 종료 시 false
     ========================================== */
     window.setNavigationMode = function(isNav) {
       isNavigationMode = !!isNav;
+
       if (routeLineRemain) {
         routeLineRemain.setOptions({
           strokeColor: isNavigationMode ? '#1976D2' : '#00C853',
-          strokeWeight: isNavigationMode ? 6 : 5
+          strokeWeight: isNavigationMode ? 8 : 6   // 🔥 더 굵게
         });
       }
 
-      // 🆕 네비 모드일 때 살짝 확대, 종료 시 원래대로
       if (map) {
         if (isNavigationMode) {
-          // 숫자 작을수록 더 확대됨 (1이 제일 가까움)
-          map.setLevel(2);   // 지금 3이니까 한 단계 더 확대
+          map.setLevel(2);        // 살짝 확대
         } else {
           map.setLevel(defaultMapLevel);
+          // 안내 종료되면 러너 아이콘 숨기기
+          hideRunnerOnRoute();
         }
       }
     };
@@ -197,21 +201,23 @@
         routeArrows = [];
       }
 
-      // 남은 길
+      // 남은 길 (기본 상태에서도 조금 더 굵고 튀게)
       routeLineRemain = new kakao.maps.Polyline({
         path: routeCoords,
-        strokeWeight: 5,
+        strokeWeight: 6,             // 🔥 기존보다 굵게
         strokeColor: '#00C853',
-        strokeOpacity: 0.9
+        strokeOpacity: 0.96,
+        strokeStyle: 'solid'
       });
       routeLineRemain.setMap(map);
 
       // 지난 길 (초기: 비어있음)
       routeLineDone = new kakao.maps.Polyline({
         path: [],
-        strokeWeight: 6,
-        strokeColor: '#555',
-        strokeOpacity: 0.9
+        strokeWeight: 7,             // 🔥 지나온 길도 굵게
+        strokeColor: '#555555',
+        strokeOpacity: 0.96,
+        strokeStyle: 'solid'
       });
 
       // 출발/도착
@@ -229,7 +235,7 @@
       routeCoords.forEach(p => bounds.extend(p));
       map.setBounds(bounds);
 
-      // 🆕 방향 화살표 생성
+      // 방향 화살표 생성
       createRouteArrows(routeCoords);
     };
 
@@ -261,22 +267,23 @@
 
       routeLineDone = new kakao.maps.Polyline({
         path: donePath,
-        strokeWeight: 6,
-        strokeColor: '#555',
-        strokeOpacity: 0.9
+        strokeWeight: 7,
+        strokeColor: '#555555',
+        strokeOpacity: 0.96,
+        strokeStyle: 'solid'
       });
       routeLineDone.setMap(map);
 
       routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
-        strokeWeight: isNavigationMode ? 6 : 5,
+        strokeWeight: isNavigationMode ? 8 : 6,
         strokeColor: isNavigationMode ? '#1976D2' : '#00C853',
-        strokeOpacity: 0.9
+        strokeOpacity: 0.96,
+        strokeStyle: 'solid'
       });
       routeLineRemain.setMap(map);
 
-      // 🔁 화살표는 처음 그린 전체 코스를 기준으로 두고,
-      // 굳이 매번 다시 계산 안 해도 돼서 여기선 건드리지 않음.
+      // 화살표는 처음 코스 기준이라 매번 다시 만들 필요 없음
     };
 
     /* ==========================================
@@ -284,28 +291,31 @@
     ========================================== */
     window.followUser = function(lat, lng) {
       const pos = new kakao.maps.LatLng(lat, lng);
-      map.panTo(pos);   // 🔥 자연스럽게 따라감
+      map.panTo(pos);   // 자연스럽게 따라감
     };
 
     /* ==========================================
        러너 아이콘 업데이트(부드러운 이동)
+       ✅ 안내 시작일 때(isNavigationMode=true)만 표시
     ========================================== */
     window.updateRunnerOnRoute = function(lat, lng, heading, onRoute) {
+      // ⛔ 네비게이션 모드가 아니면 아이콘 표시 안 함
+      if (!isNavigationMode) return;
 
       const pos = new kakao.maps.LatLng(lat, lng);
       const proj = map.getProjection();
       const point = proj.containerPointFromCoords(pos);
 
       const color = (onRoute === true || onRoute === "true")
-        ? "#1E88E5"
-        : "#E53935";
+        ? "#1E88E5"   // 코스 위
+        : "#E53935";  // 코스 이탈
 
+      // FlutterCompass heading: 0° = 북, 시계방향
       const h = Number(heading || 0);
-      const offsetDeg = -18; /* 🔥 지윤이가 말한 각도 보정 */
+      const offsetDeg = 0; // 🔥 정확한 방향 우선 (필요하면 살짝만 조정)
 
       // 최초 생성
       if (!runnerOverlay) {
-
         runnerWrapperDiv = document.createElement("div");
         runnerWrapperDiv.className = "runner-wrapper";
 
@@ -324,16 +334,15 @@
           zIndex: 5
         });
         runnerOverlay.setMap(map);
-
       } else {
         runnerOverlay.setPosition(pos);
       }
 
-      // 🎯 CSS transform 기반으로 자연스럽게 이동
+      // 부드러운 이동
       runnerWrapperDiv.style.transform =
-        `translate3d(${point.x - 17}px, ${point.y - 17}px, 0)`; // 중심 맞춤
+        `translate3d(${point.x - 17}px, ${point.y - 17}px, 0)`; // 중심 맞추기
 
-      // 회전
+      // 방향 회전
       const outer = runnerWrapperDiv.querySelector("#runnerOuter");
       outer.style.transform = `rotate(${h + offsetDeg}deg)`;
 
@@ -344,43 +353,43 @@
 
 
     /* ==========================================
-       러너 숨기기
+       러너 숨기기 + 경로/화살표 정리
     ========================================== */
     window.hideRunnerOnRoute = function() {
-  // 러너 아이콘 제거
-  if (runnerOverlay) {
-    runnerOverlay.setMap(null);
-    runnerOverlay = null;
-  }
+      // 러너 아이콘 제거
+      if (runnerOverlay) {
+        runnerOverlay.setMap(null);
+        runnerOverlay = null;
+      }
+      runnerWrapperDiv = null;
 
-  // 방향 화살표 제거
-  if (routeArrows.length) {
-    routeArrows.forEach(a => a.setMap(null));
-    routeArrows = [];
-  }
+      // 방향 화살표 제거
+      if (routeArrows.length) {
+        routeArrows.forEach(a => a.setMap(null));
+        routeArrows = [];
+      }
 
-  // ✅ 폴리라인 / 출발·도착 마커도 같이 제거
-  if (routeLineDone) {
-    routeLineDone.setMap(null);
-    routeLineDone = null;
-  }
-  if (routeLineRemain) {
-    routeLineRemain.setMap(null);
-    routeLineRemain = null;
-  }
-  if (startMarker) {
-    startMarker.setMap(null);
-    startMarker = null;
-  }
-  if (endMarker) {
-    endMarker.setMap(null);
-    endMarker = null;
-  }
+      // 폴리라인 / 출발·도착 마커도 같이 제거 (필요 없으면 아래 블록은 지워도 됨)
+      if (routeLineDone) {
+        routeLineDone.setMap(null);
+        routeLineDone = null;
+      }
+      if (routeLineRemain) {
+        routeLineRemain.setMap(null);
+        routeLineRemain = null;
+      }
+      if (startMarker) {
+        startMarker.setMap(null);
+        startMarker = null;
+      }
+      if (endMarker) {
+        endMarker.setMap(null);
+        endMarker = null;
+      }
 
-  // 남아있는 경로 좌표도 초기화
-  routeCoords = [];
-};
-
+      // 경로 좌표 초기화
+      routeCoords = [];
+    };
   </script>
 </body>
 </html>
