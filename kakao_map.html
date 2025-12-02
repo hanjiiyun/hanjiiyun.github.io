@@ -57,7 +57,7 @@
       height: 0;
       border-left: 6px solid transparent;
       border-right: 6px solid transparent;
-      border-bottom: 12px solid white; /* 위쪽 방향 */
+      border-bottom: 12px solid blue; /* 위쪽 방향 */
     }
 
     /* 🌟 폴리라인 위 방향 화살표 (흰색) */
@@ -265,9 +265,9 @@
       });
 
       // 전체 보기
-      const bounds = new kakao.maps.LatLngBounds();
-      routeCoords.forEach(p => bounds.extend(p));
-      map.setBounds(bounds);
+      if (routeCoords.length > 0) {
+  map.panTo(routeCoords[0]);
+}
     };
 
     /* ==========================================
