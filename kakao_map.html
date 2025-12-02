@@ -61,6 +61,15 @@
       border-bottom: 12px solid white; /* 위쪽 방향 */
     }
 
+    /* 🆕 폴리라인 진행 방향 화살표 (작은 삼각형) */
+    .route-arrow {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-bottom: 8px solid #1976D2; /* 네비 파란색 */
+    }
+
   </style>
 
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry"></script>
@@ -87,6 +96,12 @@
 
     let isNavigationMode = false;
 
+    // 🆕 화살표 오버레이들
+    let routeArrows = [];
+
+    // 🆕 기본 지도 레벨 저장 (네비 모드 끝나면 복원)
+    let defaultMapLevel = 3;
+
     /* ==========================================
        지도 초기화
     ========================================== */
@@ -96,12 +111,53 @@
         center: new kakao.maps.LatLng(37.4507, 126.6530),
         level: 3
       });
+      defaultMapLevel = map.getLevel(); // 🆕 현재 레벨 저장
       console.log("🗺 지도 초기화됨");
     }
     initMap();
 
     /* ==========================================
-       네비게이션 모드 색상변경
+       🔁 폴리라인 방향 화살표 생성
+    ========================================== */
+    function createRouteArrows(coords) {
+      // 기존 화살표 제거
+      if (routeArrows.length) {
+        routeArrows.forEach(a => a.setMap(null));
+        routeArrows = [];
+      }
+      if (!coords || coords.length < 2) return;
+
+      // 너무 많이 찍히지 않게 간격 조절 (최대 25개 정도)
+      const maxArrows = 25;
+      const step = Math.max(1, Math.floor(coords.length / maxArrows));
+
+      for (let i = 0; i < coords.length - 1; i += step) {
+        const p1 = coords[i];
+        const p2 = coords[i + 1];
+
+        const dx = p2.getLng() - p1.getLng();
+        const dy = p2.getLat() - p1.getLat();
+        const angleRad = Math.atan2(dy, dx);
+        const angleDeg = angleRad * 180 / Math.PI;
+
+        const html =
+          `<div class="route-arrow" style="
+              transform: rotate(${angleDeg + 90}deg);
+              transform-origin: 50% 50%;
+            "></div>`;
+
+        const overlay = new kakao.maps.CustomOverlay({
+          position: p1,
+          content: html,
+          zIndex: 4
+        });
+        overlay.setMap(map);
+        routeArrows.push(overlay);
+      }
+    }
+
+    /* ==========================================
+       네비게이션 모드 색상변경 + 확대
     ========================================== */
     window.setNavigationMode = function(isNav) {
       isNavigationMode = !!isNav;
@@ -110,6 +166,16 @@
           strokeColor: isNavigationMode ? '#1976D2' : '#00C853',
           strokeWeight: isNavigationMode ? 6 : 5
         });
+      }
+
+      // 🆕 네비 모드일 때 살짝 확대, 종료 시 원래대로
+      if (map) {
+        if (isNavigationMode) {
+          // 숫자 작을수록 더 확대됨 (1이 제일 가까움)
+          map.setLevel(2);   // 지금 3이니까 한 단계 더 확대
+        } else {
+          map.setLevel(defaultMapLevel);
+        }
       }
     };
 
@@ -126,6 +192,10 @@
       if (routeLineRemain) routeLineRemain.setMap(null);
       if (startMarker) startMarker.setMap(null);
       if (endMarker) endMarker.setMap(null);
+      if (routeArrows.length) {
+        routeArrows.forEach(a => a.setMap(null));
+        routeArrows = [];
+      }
 
       // 남은 길
       routeLineRemain = new kakao.maps.Polyline({
@@ -158,6 +228,9 @@
       const bounds = new kakao.maps.LatLngBounds();
       routeCoords.forEach(p => bounds.extend(p));
       map.setBounds(bounds);
+
+      // 🆕 방향 화살표 생성
+      createRouteArrows(routeCoords);
     };
 
     /* ==========================================
@@ -201,6 +274,9 @@
         strokeOpacity: 0.9
       });
       routeLineRemain.setMap(map);
+
+      // 🔁 화살표는 처음 그린 전체 코스를 기준으로 두고,
+      // 굳이 매번 다시 계산 안 해도 돼서 여기선 건드리지 않음.
     };
 
     /* ==========================================
@@ -216,43 +292,55 @@
     ========================================== */
     window.updateRunnerOnRoute = function(lat, lng, heading, onRoute) {
 
-  const pos = new kakao.maps.LatLng(lat, lng);
+      const pos = new kakao.maps.LatLng(lat, lng);
+      const proj = map.getProjection();
+      const point = proj.containerPointFromCoords(pos);
 
-  const color = (onRoute === true || onRoute === "true")
-    ? "#1E88E5"
-    : "#E53935";
+      const color = (onRoute === true || onRoute === "true")
+        ? "#1E88E5"
+        : "#E53935";
 
-  const h = Number(heading || 0);
-  const offsetDeg = -18;
+      const h = Number(heading || 0);
+      const offsetDeg = -18; /* 🔥 지윤이가 말한 각도 보정 */
 
-  if (!runnerOverlay) {
-    runnerWrapperDiv = document.createElement("div");
-    runnerWrapperDiv.className = "runner-wrapper";
+      // 최초 생성
+      if (!runnerOverlay) {
 
-    const html = `
-      <div class="user-dir-marker-outer" id="runnerOuter">
-        <div class="user-dir-marker-core" id="runnerCore" style="background:${color};"></div>
-        <div class="user-dir-marker-arrow"></div>
-      </div>
-    `;
-    runnerWrapperDiv.innerHTML = html;
+        runnerWrapperDiv = document.createElement("div");
+        runnerWrapperDiv.className = "runner-wrapper";
 
-    runnerOverlay = new kakao.maps.CustomOverlay({
-      position: pos,
-      content: runnerWrapperDiv,
-      zIndex: 5
-    });
-    runnerOverlay.setMap(map);
-  } else {
-    runnerOverlay.setPosition(pos);
-  }
+        const html = `
+          <div class="user-dir-marker-outer" id="runnerOuter">
+            <div class="user-dir-marker-core" id="runnerCore" style="background:${color};"></div>
+            <div class="user-dir-marker-arrow"></div>
+          </div>
+        `;
 
-  const outer = runnerWrapperDiv.querySelector("#runnerOuter");
-  outer.style.transform = `rotate(${h + offsetDeg}deg)`;
+        runnerWrapperDiv.innerHTML = html;
 
-  const core = runnerWrapperDiv.querySelector("#runnerCore");
-  core.style.background = color;
-};
+        runnerOverlay = new kakao.maps.CustomOverlay({
+          position: pos,
+          content: runnerWrapperDiv,
+          zIndex: 5
+        });
+        runnerOverlay.setMap(map);
+
+      } else {
+        runnerOverlay.setPosition(pos);
+      }
+
+      // 🎯 CSS transform 기반으로 자연스럽게 이동
+      runnerWrapperDiv.style.transform =
+        `translate3d(${point.x - 17}px, ${point.y - 17}px, 0)`; // 중심 맞춤
+
+      // 회전
+      const outer = runnerWrapperDiv.querySelector("#runnerOuter");
+      outer.style.transform = `rotate(${h + offsetDeg}deg)`;
+
+      // 색상 변경
+      const core = runnerWrapperDiv.querySelector("#runnerCore");
+      core.style.background = color;
+    };
 
 
     /* ==========================================
@@ -262,6 +350,10 @@
       if (runnerOverlay) {
         runnerOverlay.setMap(null);
         runnerOverlay = null;
+      }
+      if (routeArrows.length) {
+        routeArrows.forEach(a => a.setMap(null));
+        routeArrows = [];
       }
     };
   </script>
