@@ -7,50 +7,58 @@
 
   <style>
     html, body {
-      margin:0; padding:0; height:100%;
+      margin: 0;
+      padding: 0;
+      height: 100%;
     }
-    #map { width:100%; height:100vh; }
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
 
-    /* ⭐ 러너 아이콘 (회전 + 색상 변경) */
-    /* 📍 현재 위치 러너 아이콘 (파란 동그라미 + 화살표 + 주변 번짐) */
-/* 📍 현재 위치 러너 아이콘 (파란 동그라미 + 방향 삼각형 + 번짐) */
-.user-dir-marker-outer {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(33, 150, 243, 0.25); /* 바깥 파란 번짐(halo) */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-}
+    /* 📍 현재 위치 아이콘: 바깥 파란 번짐(halo) */
+    .user-dir-marker-outer {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(33, 150, 243, 0.25); /* 파란 번짐 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
 
-/* 안쪽 파란 동그라미 */
-.user-dir-marker-core {
-  position: relative;             /* ⬅ 삼각형 기준이 되는 부모 */
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #1E88E5;            /* 기본 파랑 (JS에서 바꿀 예정) */
-  border: 3px solid #FFFFFF;      /* 흰색 링 */
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
-  box-sizing: border-box;
-}
+    /* 안쪽 파란 동그라미 (회전 X, 항상 고정) */
+    .user-dir-marker-core {
+      position: relative;             /* 화살표 기준 부모 */
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #1E88E5;            /* 기본 파랑 (JS에서 변경) */
+      border: 3px solid #FFFFFF;      /* 흰 링 */
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+      box-sizing: border-box;
+    }
 
-/* 아래에 딱 붙는 방향 삼각형 */
-.user-dir-marker-arrow {
-  position: absolute;
-  left: 50%;
-  bottom: -8px;                   /* 동그라미 아래로 살짝 나가게 */
-  transform: translateX(-50%);    /* 가운데 정렬 */
-  width: 0;
-  height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 9px solid #FFFFFF;  /* 흰색 삼각형 */
-}
+    /* 동그라미 안에서 회전할 래퍼 */
+    .user-dir-marker-arrow-wrap {
+      position: absolute;
+      inset: 0;                       /* core 전체 덮기 */
+      display: flex;
+      align-items: flex-end;          /* 아래쪽에 붙이기 */
+      justify-content: center;        /* 가운데 정렬 */
+      transform-origin: center center;/* 회전 중심 = 동그라미 중앙 */
+    }
 
-
+    /* 실제 흰색 방향 삼각형 (동그라미 안쪽) */
+    .user-dir-marker-arrow {
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 9px solid #FFFFFF;  /* 위를 향한 삼각형 */
+      margin-bottom: 2px;             /* 동그라미 테두리에서 살짝 띄우기 */
+    }
   </style>
 
   <!-- geometry 라이브러리 포함 -->
@@ -136,7 +144,7 @@
       });
       routeLineRemain.setMap(map);
 
-      // 지나온 구간(초기 빈 값)
+      // 지나온 구간(초기 빈 값, 나중에 updateRouteProgress에서 그림)
       routeLineDone = new kakao.maps.Polyline({
         path: [],
         strokeWeight: 6,
@@ -170,6 +178,8 @@
 
       const nLat = Number(lat);
       const nLng = Number(lng);
+      if (isNaN(nLat) || isNaN(nLng)) return;
+
       const current = new kakao.maps.LatLng(nLat, nLng);
 
       // 폴리라인에서 가장 가까운 index 찾기
@@ -221,37 +231,39 @@
     window.updateRunnerOnRoute = function(lat, lng, headingDeg, onRoute) {
       console.log("📡 updateRunnerOnRoute:", lat, lng, headingDeg, onRoute);
 
+      if (!map) return;
+
       const nLat = Number(lat);
       const nLng = Number(lng);
+      if (isNaN(nLat) || isNaN(nLng)) return;
+
       let nHeading = Number(headingDeg);
       if (isNaN(nHeading)) nHeading = 0;
 
       lastHeadingDeg = nHeading;
       const pos = new kakao.maps.LatLng(nLat, nLng);
 
-      // 색상 결정
-     // 색상 결정 (코스 위/이탈 상태에 따라)
-let coreColor = "#1E88E5";  // 기본 파랑
+      // 동그라미 색 결정 (코스 위/이탈 상태)
+      let coreColor = "#1E88E5"; // 기본 파랑
+      if (isNavigationMode) {
+        if (onRoute === true || onRoute === "true") {
+          coreColor = "#1E88E5";   // 코스 위: 파랑
+        } else {
+          coreColor = "#E53935";   // 코스 이탈: 빨강
+        }
+      }
 
-if (isNavigationMode) {
-  if (onRoute === true || onRoute === "true") {
-    coreColor = "#1E88E5";  // 코스 위: 파랑
-  } else {
-    coreColor = "#E53935";  // 코스 이탈: 빨강
-  }
-}
-
-// HTML 구조: 바깥 번짐 + 안쪽 동그라미 + 삼각형
-const content = `
-  <div class="user-dir-marker-outer"
-       style="transform: rotate(${nHeading}deg);">
-    <div class="user-dir-marker-core"
-         style="background:${coreColor};">
-      <div class="user-dir-marker-arrow"></div>
-    </div>
-  </div>
-`;
-
+      // 동그라미는 고정, 안쪽 삼각형 래퍼만 회전
+      const content = `
+        <div class="user-dir-marker-outer">
+          <div class="user-dir-marker-core" style="background:${coreColor};">
+            <div class="user-dir-marker-arrow-wrap"
+                 style="transform: rotate(${nHeading}deg);">
+              <div class="user-dir-marker-arrow"></div>
+            </div>
+          </div>
+        </div>
+      `;
 
       if (!userDirectionOverlay) {
         userDirectionOverlay = new kakao.maps.CustomOverlay({
@@ -278,4 +290,3 @@ const content = `
   </script>
 </body>
 </html>
-flu
