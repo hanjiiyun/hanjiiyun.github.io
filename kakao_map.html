@@ -2,8 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>R2U Kakao Map</title>
 
   <style>
@@ -12,56 +11,57 @@
     }
     #map { width:100%; height:100vh; }
 
-    /* ====================================
-       ⭐ 사용자 방향 아이콘 전체 스타일
-       ==================================== */
+    /* ---------------------------------------------------
+       📍 네이버맵 스타일의 현재 위치 아이콘
+       - 작은 파란 원 (약 14~15px)
+       - 바깥 Halo 약 30px
+       - 삼각형은 원 밖으로 살짝 돌출
+    --------------------------------------------------- */
 
-    /* 바깥 큰 번짐(halo) */
+    /* 바깥 Halo */
     .user-dir-marker-outer {
-      width: 40px;
-      height: 40px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
-      background: rgba(33, 150, 243, 0.25);
+      background: rgba(33, 150, 243, 0.18); 
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+
+    /* 파란 Core 원 (네이버맵 사이즈 느낌) */
+    .user-dir-marker-core {
       position: relative;
-      box-sizing: border-box;
+      width: 14px;     /* 🌟 네이버맵 크기 */
+      height: 14px;
+      border-radius: 50%;
+      background: #1E88E5; /* 기본 파란색 */
+      border: 2px solid #fff;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
+
+    /* 삼각형 회전용 래퍼 */
+    .user-dir-marker-arrow-wrap {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: flex-start;   /* 원 위쪽에 삼각형 붙이기 */
+      justify-content: center;
       transform-origin: center center;
     }
 
-    /* 안쪽 파란 동그라미 */
-    .user-dir-marker-core {
-      width: 15px;
-      height: 15px;
-      border-radius: 50%;
-      background: #1E88E5;
-      border: 3px solid #FFF;
-      box-shadow: 0 0 6px rgba(0,0,0,0.35);
-      position: relative;
-      z-index: 2;
-    }
-
-    /* 삼각형을 바깥으로 빼는 래퍼 */
-    .user-dir-marker-arrow-wrap {
-      position: absolute;
-      top: calc(50% + 18px);   /* ⭐ -18px 효과 = 아래로 18px 이동 */
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 3;
-    }
-
-    /* 방향 삼각형 */
+    /* 삼각형 (원 밖으로 튀어나옴) */
     .user-dir-marker-arrow {
       width: 0;
       height: 0;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-top: 10px solid white;  /* 위쪽이 뾰족 → 회전으로 방향 표시 */
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-bottom: 10px solid #ffffff;
+      transform: translateY(-10px); /* 🌟 원 위로 더 튀어나오게 */
     }
   </style>
 
-  <!-- Kakao map + geometry -->
+  <!-- geometry 포함 -->
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry"></script>
 </head>
 
@@ -69,6 +69,9 @@
   <div id="map"></div>
 
   <script>
+    /* ===========================================================
+       전역 변수
+    =========================================================== */
     let map;
 
     let routeCoords = [];
@@ -78,11 +81,12 @@
     let endMarker = null;
 
     let userDirectionOverlay = null;
+    let lastHeadingDeg = 0;
     let isNavigationMode = false;
 
-    /* ================================
-       ⭐ 지도 초기화
-       ================================ */
+    /* ===========================================================
+       지도 초기화
+    =========================================================== */
     (function initMap() {
       const container = document.getElementById('map');
       const options = {
@@ -90,31 +94,33 @@
         level: 3
       };
       map = new kakao.maps.Map(container, options);
+      console.log("🗺 map 초기화 완료");
     })();
 
-    /* 네비 모드 색상 전환 */
+    /* ===========================================================
+       Follow Mode (네비게이션 모드)
+    =========================================================== */
     window.setNavigationMode = function(isNav) {
       isNavigationMode = !!isNav;
 
       if (routeLineRemain) {
         routeLineRemain.setOptions({
-          strokeColor: isNavigationMode ? '#1976D2' : '#00C853',
-          strokeWeight: isNavigationMode ? 6 : 5
+          strokeColor: isNav ? '#1976D2' : '#00C853',
+          strokeWeight: isNav ? 6 : 5
         });
       }
     };
 
-    /* ================================
-       ⭐ 추천 경로 그리기
-       ================================ */
+    /* ===========================================================
+       추천 경로 그리기
+    =========================================================== */
     window.showRecommendedRoute = function(routeData) {
       if (!routeData || !Array.isArray(routeData.polyline)) return;
 
-      routeCoords = routeData.polyline.map(p => {
-        return new kakao.maps.LatLng(Number(p.lat), Number(p.lng));
-      });
+      routeCoords = routeData.polyline.map(p =>
+        new kakao.maps.LatLng(Number(p.lat), Number(p.lng))
+      );
 
-      // 기존 제거
       if (routeLineDone) routeLineDone.setMap(null);
       if (routeLineRemain) routeLineRemain.setMap(null);
       if (startMarker) startMarker.setMap(null);
@@ -146,28 +152,30 @@
       });
 
       const bounds = new kakao.maps.LatLngBounds();
-      routeCoords.forEach(c => bounds.extend(c));
+      routeCoords.forEach(p => bounds.extend(p));
       map.setBounds(bounds);
     };
 
-    /* ================================
-       ⭐ 지나온 길/남은 길 처리
-       ================================ */
+    /* ===========================================================
+       진행률 업데이트
+    =========================================================== */
     window.updateRouteProgress = function(lat, lng) {
       if (!routeCoords.length) return;
 
-      const cur = new kakao.maps.LatLng(lat, lng);
+      const current = new kakao.maps.LatLng(lat, lng);
 
+      // 가장 가까운 index 찾기
       let idx = 0;
-      let min = Infinity;
-
-      routeCoords.forEach((p, i) => {
-        const d = kakao.maps.geometry.spherical.computeDistanceBetween(cur, p);
-        if (d < min) {
-          min = d;
+      let minDist = Infinity;
+      for (let i = 0; i < routeCoords.length; i++) {
+        const d = kakao.maps.geometry.spherical.computeDistanceBetween(
+          current, routeCoords[i]
+        );
+        if (d < minDist) {
+          minDist = d;
           idx = i;
         }
-      });
+      }
 
       const donePath = routeCoords.slice(0, idx + 1);
       const remainPath = routeCoords.slice(idx);
@@ -178,47 +186,54 @@
       routeLineDone = new kakao.maps.Polyline({
         path: donePath,
         strokeWeight: 6,
-        strokeColor: '#555',
-        strokeOpacity: 0.9
+        strokeColor: '#555'
       });
       routeLineDone.setMap(map);
 
+      const color = isNavigationMode ? '#1976D2' : '#00C853';
       routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
         strokeWeight: isNavigationMode ? 6 : 5,
-        strokeColor: isNavigationMode ? '#1976D2' : '#00C853',
-        strokeOpacity: 0.9
+        strokeColor: color
       });
       routeLineRemain.setMap(map);
     };
 
-    /* ================================
-       ⭐ 사용자 방향 + 위치 아이콘
-       ================================ */
+    /* ===========================================================
+       러너 아이콘 (네이버 스타일) 업데이트
+       + Follow Mode : 지도 중심을 항상 pos로 이동
+    =========================================================== */
     window.updateRunnerOnRoute = function(lat, lng, headingDeg, onRoute) {
       const pos = new kakao.maps.LatLng(lat, lng);
 
-      const color = (isNavigationMode && !(onRoute === true || onRoute === "true"))
-        ? '#E53935'     // 이탈 시: 빨강
-        : '#1E88E5';    // 정상: 파랑
+      // Follow Mode - 지도 중심 이동
+      map.setCenter(pos);
 
-      /* ⭐ 삼각형 아래로 -18px (top: calc(50% + 18px)) */
+      // 색상
+      let coreColor = "#1E88E5";
+      if (isNavigationMode) {
+        if (onRoute === "false" || onRoute === false) {
+          coreColor = "#E53935";
+        }
+      }
+
       const content = `
-        <div class="user-dir-marker-outer" style="transform: rotate(${headingDeg}deg);">
-          <div class="user-dir-marker-core" style="background:${color};"></div>
+      <div class="user-dir-marker-outer" style="transform: rotate(${headingDeg}deg);">
+        <div class="user-dir-marker-core" style="background:${coreColor};">
           <div class="user-dir-marker-arrow-wrap">
             <div class="user-dir-marker-arrow"></div>
           </div>
         </div>
+      </div>
       `;
 
       if (!userDirectionOverlay) {
         userDirectionOverlay = new kakao.maps.CustomOverlay({
-          map,
           position: pos,
-          content,
-          zIndex: 10
+          content: content,
+          zIndex: 5
         });
+        userDirectionOverlay.setMap(map);
       } else {
         userDirectionOverlay.setPosition(pos);
         userDirectionOverlay.setContent(content);
