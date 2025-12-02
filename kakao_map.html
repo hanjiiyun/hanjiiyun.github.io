@@ -265,9 +265,17 @@
       });
 
       // 전체 보기
-      if (routeCoords.length > 0) {
-  map.panTo(routeCoords[0]);
+     // ✅ 코스 전체가 화면에 보이도록 축소/이동
+if (routeCoords.length > 0) {
+  const bounds = new kakao.maps.LatLngBounds();
+  routeCoords.forEach(p => bounds.extend(p));
+  map.setBounds(bounds);
 }
+
+// (화살표는 네비 모드일 때만 쓰고 싶으면, 여기서는 안 불러도 됨)
+// 지금 구조에서는 방향 화살표를 setNavigationMode(true) 안에서 만들고 있으니까,
+// showRecommendedRoute 안에서는 createRouteArrows 안 불러도 돼.
+
     };
 
     /* ==========================================
