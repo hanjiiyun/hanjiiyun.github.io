@@ -108,6 +108,10 @@
 
     /* ========= 방향 화살표 ========= */
     function createRouteArrows(coords) {
+      if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
+        console.log("geometry.spherical 없음 - createRouteArrows 스킵");
+        return;
+      }
       // 기존 화살표 제거
       if (routeArrows.length) {
         routeArrows.forEach(a => a.setMap(null));
@@ -258,6 +262,11 @@
           }
           // 2) lat/lng가 없고 atDistM만 있으면, polyline 위에서 위치 계산
           else if (typeof t.atDistM === 'number') {
+            if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
+              console.log("geometry.spherical 없음 - turn 위치 계산 스킵");
+              return;
+            }
+
             const target = t.atDistM;
             let acc = 0;
             for (let i = 0; i < routeCoords.length - 1; i++) {
@@ -328,6 +337,11 @@
     /* ========= 지나온 길 / 남은 길 업데이트 ========= */
     window.updateRouteProgress = function(lat, lng) {
       if (!routeCoords.length) return;
+
+      if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
+        console.log("geometry.spherical 없음 - updateRouteProgress 스킵");
+        return;
+      }
 
       const cur = new kakao.maps.LatLng(lat, lng);
       let idx = 0;
