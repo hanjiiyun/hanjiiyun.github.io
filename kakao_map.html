@@ -109,7 +109,6 @@
     /* ========= 방향 화살표 ========= */
     function createRouteArrows(coords) {
       if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
-        console.log("geometry.spherical 없음 - createRouteArrows 스킵");
         return;
       }
       // 기존 화살표 제거
@@ -263,7 +262,6 @@
           // 2) lat/lng가 없고 atDistM만 있으면, polyline 위에서 위치 계산
           else if (typeof t.atDistM === 'number') {
             if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
-              console.log("geometry.spherical 없음 - turn 위치 계산 스킵");
               return;
             }
 
@@ -339,7 +337,6 @@
       if (!routeCoords.length) return;
 
       if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
-        console.log("geometry.spherical 없음 - updateRouteProgress 스킵");
         return;
       }
 
