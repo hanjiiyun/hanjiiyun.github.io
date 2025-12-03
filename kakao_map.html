@@ -102,7 +102,7 @@
         level: 3
       });
       defaultMapLevel = map.getLevel();
-      console.log("🗺 지도 초기화됨");
+      
     }
     initMap();
 
@@ -239,7 +239,6 @@
     /* ========= 추천 경로 그리기 ========= */
     window.showRecommendedRoute = function(data) {
       if (!data || !Array.isArray(data.polyline)) {
-        console.log("❌ showRecommendedRoute: polyline 없음");
         return;
       }
 
@@ -257,6 +256,7 @@
               lng: t.lng,
               type: t.type || 'straight',
               atDistM: t.atDistM || null,
+              instruction: t.instruction || "",
             });
           }
           // 2) lat/lng가 없고 atDistM만 있으면, polyline 위에서 위치 계산
@@ -285,6 +285,7 @@
                   lng: lng,
                   type: t.type || 'straight',
                   atDistM: t.atDistM,
+                  instruction: t.instruction || "",
                 });
                 break;
               }
@@ -468,7 +469,77 @@
       routeCoords = [];
       routeTurns = [];
     };
-  </script>
+  window.r2uCourse = window.r2uCourse || null;
+window.r2uTurns = window.r2uTurns || [];
+window.r2uSpokenTurnIds = window.r2uSpokenTurnIds || new Set();
+
+// 간단 거리 계산 (미터 단위)
+function r2uDistanceMeter(lat1, lng1, lat2, lng2) {
+  const R = 6371000; // m
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLng = (lng2 - lng1) * toRad;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * toRad) *
+      Math.cos(lat2 * toRad) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// ✅ 내 위치 기준으로 "어떤 턴을 말해야 하나" 체크
+function r2uCheckTurnTts(currentLat, currentLng) {
+  if (!window.r2uTurns || window.r2uTurns.length === 0) return;
+
+  const THRESHOLD = 40; // 몇 m 앞에서 읽을지 (원하면 30~80 사이로 조절해도 됨)
+
+  for (let i = 0; i < window.r2uTurns.length; i++) {
+    const t = window.r2uTurns[i];
+
+    // 🔎 턴 좌표 필드 추측: lat/lng 또는 latitude/longitude 또는 point.lat/point.lng
+    const turnLat = t.lat ?? t.latitude ?? (t.point && t.point.lat);
+    const turnLng = t.lng ?? t.longitude ?? (t.point && t.point.lng);
+    if (turnLat == null || turnLng == null) continue;
+
+    const turnId = t.id ?? i.toString();
+    const dist = r2uDistanceMeter(currentLat, currentLng, turnLat, turnLng);
+
+    if (dist < THRESHOLD && !window.r2uSpokenTurnIds.has(turnId)) {
+      // 👂 한 번만 읽도록 기록
+      window.r2uSpokenTurnIds.add(turnId);
+
+      // 🔊 Flutter TTS로 안내 문구 전송
+      if (window.R2UTTS && window.R2UTTS.postMessage) {
+        const msg = t.instruction || "";
+        window.R2UTTS.postMessage(msg);
+      }
+    }
+  }
+}
+
+// ===============================
+// ✅ 기존 함수 살리면서 "랩핑"만 하기
+// ===============================
+(function() {
+  // 1️⃣ 코스가 새로 들어올 때(폴리라인/턴 정보 세팅)
+  const origShow = window.showRecommendedRoute;
+  window.showRecommendedRoute = function(courseJson) {
+    if (origShow) origShow(courseJson);
+
+    window.r2uCourse = courseJson;
+    window.r2uTurns = routeTurns || []; 
+    window.r2uSpokenTurnIds = new Set();
+  };
+
+  // 2️⃣ 진행률 업데이트 될 때(= Flutter에서 updateRouteProgress 호출할 때)
+  const origProgress = window.updateRouteProgress;
+  window.updateRouteProgress = function(lat, lng) {
+    if (origProgress) origProgress(lat, lng);
+    r2uCheckTurnTts(lat, lng);
+  };
+})();
+</script>
 </body>
 </html>
 
