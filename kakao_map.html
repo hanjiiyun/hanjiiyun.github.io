@@ -115,33 +115,7 @@
       }
       if (!coords || coords.length < 2) return;
 
-      // 1️⃣ 출발 방향 화살표 (시작 방향만)
-      (function addStartArrow() {
-        const p1 = coords[0];
-        const p2 = coords[1];
-
-        const dx = p2.getLng() - p1.getLng();
-        const dy = p2.getLat() - p1.getLat();
-        const angleRad = Math.atan2(dy, dx);
-        const angleDeg = angleRad * 180 / Math.PI;
-        const rotateDeg = angleDeg - 90; // 위쪽 기준 보정
-
-        const html =
-          `<div class="route-arrow" style="
-              transform: rotate(${rotateDeg}deg);
-              transform-origin: 50% 50%;
-              border-bottom-color: #00FA73;
-            "></div>`;
-
-        const overlay = new kakao.maps.CustomOverlay({
-          position: p1,
-          content: html,
-          zIndex: 4
-        });
-        overlay.setMap(map);
-        routeArrows.push(overlay);
-      })();
-
+      
       // 2️⃣ 턴 지점 화살표 (좌/우회전 지점에만)
       if (routeTurns && routeTurns.length) {
         routeTurns.forEach(turn => {
@@ -385,7 +359,7 @@
       routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
         strokeWeight: isNavigationMode ? 9 : 6,
-        strokeColor:'#76FF03',   // ✅ 아직 안 간 길: 연두색
+        strokeColor:'#8BC34A',   // ✅ 아직 안 간 길: 연두색
         strokeOpacity: 0.96,
         strokeStyle: 'solid',
       });
