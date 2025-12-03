@@ -56,22 +56,14 @@
       border-bottom: 12px solid white;
     }
 
-    /* 코스 위 턴 라벨 (L / R 표기용) */
+    /* 코스 위 방향 화살표 (출발/턴 지점용) */
     .route-arrow {
-      position: relative;
-      transform: translate(-50%, -50%);
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      border: 2px solid #9CCC65; /* 기본 라임 그린 */
-      background: #FFFFFF;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: 700;
-      color: #2E7D32;
-      box-shadow: 0 0 4px rgba(0,0,0,0.35);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 16px solid #00FA73; /* 기본: 형광초록 */
+      filter: drop-shadow(0 0 3px rgba(0,0,0,0.8));
     }
   </style>
 
@@ -99,7 +91,7 @@
     let isNavigationMode = false;
     let defaultMapLevel = 3;
 
-    let routeArrows = []; // 방향 화살표들 (이제 L/R 라벨)
+    let routeArrows = []; // 방향 화살표들
     let routeTurns = [];  // ⭐ 턴 위치 정보 (좌/우회전 지점)
 
     /* ========= 지도 초기화 ========= */
@@ -114,7 +106,7 @@
     }
     initMap();
 
-    /* ========= 턴 라벨(L/R) 생성 ========= */
+    /* ========= 방향 화살표 ========= */
     function createRouteArrows(coords) {
       // 기존 화살표 제거
       if (routeArrows.length) {
@@ -122,48 +114,67 @@
         routeArrows = [];
       }
       if (!coords || coords.length < 2) return;
-      if (!routeTurns || !routeTurns.length) return;
 
-      // 턴 지점마다 L/R 원형 라벨 표시
-      routeTurns.forEach(turn => {
-        const tLat = turn.lat;
-        const tLng = turn.lng;
-        if (typeof tLat !== 'number' || typeof tLng !== 'number') return;
+      
+      // 2️⃣ 턴 지점 화살표 (좌/우회전 지점에만)
+      if (routeTurns && routeTurns.length) {
+        routeTurns.forEach(turn => {
+          const tLat = turn.lat
+          const tLng = turn.lng;
+          if (typeof tLat !== 'number' || typeof tLng !== 'number') return;
 
-        const pos = new kakao.maps.LatLng(tLat, tLng);
+          const pos = new kakao.maps.LatLng(tLat, tLng);
 
-        let label = '';
-        let borderColor = '#9CCC65';
-        let textColor = '#2E7D32';
-        const bgColor = '#FFFFFF';
+          // 이 턴 위치와 가장 가까운 polyline segment 찾기
+          let nearestIdx = 0;
+          let minDist = Infinity;
+          for (let i = 0; i < coords.length; i++) {
+            const d = kakao.maps.geometry.spherical.computeDistanceBetween(
+              pos,
+              coords[i]
+            );
+            if (d < minDist) {
+              minDist = d;
+              nearestIdx = i;
+            }
+          }
 
-        if (turn.type === 'left') {
-          label = 'L';
-          borderColor = '#FF7043';   // 좌회전: 주황 테두리
-          textColor = '#D84315';
-        } else if (turn.type === 'right') {
-          label = 'R';
-          borderColor = '#42A5F5';   // 우회전: 파란 테두리
-          textColor = '#1565C0';
-        } else {
-          label = ''; // 직진은 표시 안 해도 되면 빈칸으로 놔둠
-        }
+          const baseIdx = Math.min(nearestIdx, coords.length - 2);
+          const segP1 = coords[baseIdx];
+          const segP2 = coords[baseIdx + 1];
 
-        const html =
-          `<div class="route-arrow" style="
-              border-color:${borderColor};
-              color:${textColor};
-              background:${bgColor};
-            ">${label}</div>`;
+          const dx = segP2.getLng() - segP1.getLng();
+          const dy = segP2.getLat() - segP1.getLat();
+          const angleRad = Math.atan2(dy, dx);
+          const angleDeg = angleRad * 180 / Math.PI;
+          const rotateDeg = angleDeg - 90;
 
-        const overlay = new kakao.maps.CustomOverlay({
-          position: pos,
-          content: html,
-          zIndex: 5
+          // 타입별 색상 (좌/우회전 구분용)
+          let color = '#FFFFFF';
+          if (turn.type === 'left') {
+            color = '#FF7043';   // 좌회전: 주황
+          } else if (turn.type === 'right') {
+            color = '#42A5F5';   // 우회전: 파랑
+          } else {
+            color = '#FFFFFF';   // 직진/기타
+          }
+
+          const html =
+            `<div class="route-arrow" style="
+                transform: rotate(${rotateDeg}deg);
+                transform-origin: 50% 50%;
+                border-bottom-color: ${color};
+              "></div>`;
+
+          const overlay = new kakao.maps.CustomOverlay({
+            position: pos,
+            content: html,
+            zIndex: 5
+          });
+          overlay.setMap(map);
+          routeArrows.push(overlay);
         });
-        overlay.setMap(map);
-        routeArrows.push(overlay);
-      });
+      }
     }
 
     /* ========= 네비게이션 모드 on/off ========= */
@@ -193,14 +204,14 @@
             routeLineBase.setMap(map);
           }
 
-          // 남은 길: 색은 그대로, 네비 중엔 살짝 더 두껍게만
+          // 남은 길: 색은 그대로(연두색), 네비 중엔 살짝 더 두껍게만
           if (routeLineRemain) {
             routeLineRemain.setOptions({
               strokeWeight: 8,   // 🔍 네비 모드일 때만 조금 더 두껍게
             });
           }
 
-          // 턴 지점 L/R 라벨 생성
+          // 방향 화살표 생성 (출발 + 턴 지점만)
           createRouteArrows(routeCoords);
         }
       }
@@ -347,8 +358,8 @@
 
       routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
-        strokeWeight: isNavigationMode ? 8 : 6,
-        strokeColor: '#00E676',   // ✅ 아직 안 간 길: 연두색 (너가 원하면 이거만 로고색으로 바꾸면 돼)
+        strokeWeight: isNavigationMode ? 9 : 6,
+        strokeColor:'#8BC34A',   // ✅ 아직 안 간 길: 연두색
         strokeOpacity: 0.96,
         strokeStyle: 'solid',
       });
