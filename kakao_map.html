@@ -490,6 +490,8 @@ function r2uDistanceMeter(lat1, lng1, lat2, lng2) {
 
 // ✅ 내 위치 기준으로 "어떤 턴을 말해야 하나" 체크
 function r2uCheckTurnTts(currentLat, currentLng) {
+  if (!window.isNavigationMode) return;
+
   if (!window.r2uTurns || window.r2uTurns.length === 0) return;
 
   const THRESHOLD = 40; // 몇 m 앞에서 읽을지 (원하면 30~80 사이로 조절해도 됨)
