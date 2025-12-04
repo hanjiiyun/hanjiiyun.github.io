@@ -331,6 +331,10 @@
       const bounds = new kakao.maps.LatLngBounds();
       routeCoords.forEach(p => bounds.extend(p));
       map.setBounds(bounds);
+
+      window.r2uCourse = data;
+      window.r2uTurns = routeTurns || [];
+      window.r2uSpokenTurnIds = new Set();
     };
 
     /* ========= 지나온 길 / 남은 길 업데이트 ========= */
@@ -368,6 +372,7 @@
         strokeStyle: 'solid',
       });
       routeLineDone.setMap(map);
+      r2uCheckTurnTts(lat, lng);
 
       routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
@@ -491,7 +496,7 @@ function r2uDistanceMeter(lat1, lng1, lat2, lng2) {
 
 // ✅ 내 위치 기준으로 "어떤 턴을 말해야 하나" 체크
 function r2uCheckTurnTts(currentLat, currentLng) {
-  if (!window.isNavigationMode) return;
+  if (!isNavigationMode) return;
 
   if (!window.r2uTurns || window.r2uTurns.length === 0) return;
 
@@ -521,27 +526,6 @@ function r2uCheckTurnTts(currentLat, currentLng) {
   }
 }
 
-// ===============================
-// ✅ 기존 함수 살리면서 "랩핑"만 하기
-// ===============================
-(function() {
-  // 1️⃣ 코스가 새로 들어올 때(폴리라인/턴 정보 세팅)
-  const origShow = window.showRecommendedRoute;
-  window.showRecommendedRoute = function(courseJson) {
-    if (origShow) origShow(courseJson);
-
-    window.r2uCourse = courseJson;
-    window.r2uTurns = routeTurns || []; 
-    window.r2uSpokenTurnIds = new Set();
-  };
-
-  // 2️⃣ 진행률 업데이트 될 때(= Flutter에서 updateRouteProgress 호출할 때)
-  const origProgress = window.updateRouteProgress;
-  window.updateRouteProgress = function(lat, lng) {
-    if (origProgress) origProgress(lat, lng);
-    r2uCheckTurnTts(lat, lng);
-  };
-})();
 </script>
 </body>
 </html>
