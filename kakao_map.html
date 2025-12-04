@@ -75,6 +75,9 @@
 
   <script>
     /* ========= 전역 ========= */
+    window.r2uOffRouteWarned = false; // 이탈 안내 1회 방지
+    window.r2uBackToRouteWarned = false; // 복귀 안내 1회 방지
+
     let map;
 
     let routeCoords = [];
@@ -93,6 +96,8 @@
 
     let routeArrows = []; // 방향 화살표들
     let routeTurns = [];  // ⭐ 턴 위치 정보 (좌/우회전 지점)
+
+    
 
     /* ========= 지도 초기화 ========= */
     function initMap() {
@@ -339,50 +344,67 @@
 
     /* ========= 지나온 길 / 남은 길 업데이트 ========= */
     window.updateRouteProgress = function(lat, lng) {
-      if (!routeCoords.length) return;
+    if (!routeCoords.length) return;
+    if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) return;
 
-      if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
-        return;
-      }
+    const cur = new kakao.maps.LatLng(lat, lng);
 
-      const cur = new kakao.maps.LatLng(lat, lng);
-      let idx = 0;
-      let minDist = Infinity;
-
-      for (let i = 0; i < routeCoords.length; i++) {
+    // 🔎 가장 가까운 지점 찾기
+    let idx = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < routeCoords.length; i++) {
         const d = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
         if (d < minDist) {
-          minDist = d;
-          idx = i;
+            minDist = d;
+            idx = i;
         }
-      }
-      console.log('[R2U] progress idx =', idx, 'dist =', minDist);
+    }
 
-      const donePath   = routeCoords.slice(0, idx + 1);
-      const remainPath = routeCoords.slice(idx);
+    // ⛔ idx가 너무 많이 앞뒤로 튀지 않도록 안정화
+    const stableIdx = Math.max(window.r2uLastIdx, idx);
+    window.r2uLastIdx = stableIdx;
 
-      if (routeLineDone)   routeLineDone.setMap(null);
-      if (routeLineRemain) routeLineRemain.setMap(null);
+    // ----------- 회색/연두색 라인 업데이트 -----------
+    const donePath   = routeCoords.slice(0, stableIdx + 1);
+    const remainPath = routeCoords.slice(stableIdx);
 
-      routeLineDone = new kakao.maps.Polyline({
+    if (routeLineDone)   routeLineDone.setMap(null);
+    if (routeLineRemain) routeLineRemain.setMap(null);
+
+    // 회색: 지나온 길
+    routeLineDone = new kakao.maps.Polyline({
         path: donePath,
         strokeWeight: 7,
-        strokeColor: '#555555',   // ✅ 지나온 길: 회색
-        strokeOpacity: 0.96,
-        strokeStyle: 'solid',
-      });
-      routeLineDone.setMap(map);
-      r2uCheckTurnTts(lat, lng);
+        strokeColor: '#555555',
+        strokeOpacity: 0.96
+    });
+    routeLineDone.setMap(map);
 
-      routeLineRemain = new kakao.maps.Polyline({
+    // 연두색: 남은 길
+    routeLineRemain = new kakao.maps.Polyline({
         path: remainPath,
         strokeWeight: isNavigationMode ? 9 : 6,
-        strokeColor:'#8BC34A',   // ✅ 아직 안 간 길: 연두색
-        strokeOpacity: 0.96,
-        strokeStyle: 'solid',
-      });
-      routeLineRemain.setMap(map);
-    };
+        strokeColor: '#8BC34A',
+        strokeOpacity: 0.96
+    });
+    routeLineRemain.setMap(map);
+
+    // ------------ 경로 이탈 감지 15m 기준 -------------
+    let isOffRoute = minDist > 15;  
+
+    if (isOffRoute) {
+        if (!window.r2uLastOffRouteSpoken && window.R2UTTS && window.R2UTTS.postMessage) {
+            window.r2uLastOffRouteSpoken = true;
+            window.R2UTTS.postMessage("경로에서 벗어났습니다. 경로를 확인해주세요.");
+        }
+    } else {
+        // 경로 복귀 → 안내 초기화
+        window.r2uLastOffRouteSpoken = false;
+    }
+
+    // ------------ 턴 안내 체크 ------------
+    r2uCheckTurnTts(lat, lng);
+}
 
     /* ========= 지도 자동 따라가기 ========= */
     window.followUser = function(lat, lng) {
@@ -515,7 +537,7 @@ function r2uCheckTurnTts(currentLat, currentLng) {
 
     if (dist < THRESHOLD && !window.r2uSpokenTurnIds.has(turnId)) {
       // 👂 한 번만 읽도록 기록
-      window.r2uSpokenTurnIds.add(turnId);
+      window.r2uSpokenTurnIds.add(turnId);w
 
       // 🔊 Flutter TTS로 안내 문구 전송
       if (window.R2UTTS && window.R2UTTS.postMessage) {
