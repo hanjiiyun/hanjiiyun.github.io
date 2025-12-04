@@ -53,7 +53,7 @@
       height: 0;
       border-left: 6px solid transparent;
       border-right: 6px solid transparent;
-      border-bottom: 12px solid white;
+      border-bottom: 12px solid #1E88E5;
     }
 
     /* 코스 위 방향 화살표 (출발/턴 지점용) */
@@ -537,7 +537,7 @@ function r2uCheckTurnTts(currentLat, currentLng) {
 
     if (dist < THRESHOLD && !window.r2uSpokenTurnIds.has(turnId)) {
       // 👂 한 번만 읽도록 기록
-      window.r2uSpokenTurnIds.add(turnId);w
+      window.r2uSpokenTurnIds.add(turnId);
 
       // 🔊 Flutter TTS로 안내 문구 전송
       if (window.R2UTTS && window.R2UTTS.postMessage) {
