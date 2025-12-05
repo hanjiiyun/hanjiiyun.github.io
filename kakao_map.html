@@ -18,8 +18,7 @@
     .runner-wrapper {
       position: absolute;
       transform: translate(-50%, -50%);  /* 중심이 좌표에 딱 오도록 */
-      /* 🚨 클릭/터치 이벤트를 지도에 전달하도록 설정 (CSS는 유효함) */
-      pointer-events: none; /* 빨간줄 신경 안 써도 됨 */
+      pointer-events: none; /* 클릭/터치 이벤트는 지도에 전달 */
     }
 
     .user-dir-marker-outer {
@@ -68,7 +67,7 @@
     }
   </style>
 
-  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry,geometry"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry"></script>
 </head>
 
 <body>
@@ -85,9 +84,9 @@
 
     let map;
 
-    let routeCoords = [];              // Polyline 좌표
-    let routePolylines = [];           // 세그먼트별 Polyline 인스턴스
-    let routeLineBase = null;          // 흰색 두꺼운 베이스
+    let routeCoords = [];      // 전체 polyline 좌표
+    let routePolylines = [];   // 구간별 Polyline 인스턴스
+    let routeLineBase = null;  // 흰색 두꺼운 베이스 (네비 모드용)
     let startMarker = null;
     let endMarker = null;
 
@@ -97,11 +96,8 @@
     let isNavigationMode = false;
     let defaultMapLevel = 3;
 
-    let routeArrows = [];              // 턴 화살표
-    let routeTurns = [];               // 턴 정보 배열
-
-    // ⭐ 백엔드에서 받은 세그먼트 원본 (지나온 길 색 갱신용)
-    let routeSegmentsRaw = [];
+    let routeArrows = [];      // 턴 화살표
+    let routeTurns = [];       // 턴 정보 배열
 
     /* ========= 지도 초기화 ========= */
     function initMap() {
@@ -218,53 +214,32 @@
       }
     };
 
-    /** 모든 세그먼트 폴리라인 제거 */
+    /** 기존 세그먼트 폴리라인들 제거 */
     function clearRoutePolylines() {
       routePolylines.forEach(polyline => polyline.setMap(null));
       routePolylines = [];
     }
 
     /**
-     * 🚨 Flutter에서 호출: 세그먼트 목록을 받아 경로를 그립니다.
-     * isPassed 상태에 따라 색상을 다르게 그립니다.
-     * 다양한 필드 이름(startPoint/start/from 등)에 대응
+     * ✅ routeCoords 기준으로
+     *    - index < currentIdx  : 회색
+     *    - index >= currentIdx : 연두색
+     * 로 구간별 라인을 다시 그립니다.
      */
-    window.updateRouteSegments = function(segments) {
-      if (!segments || !Array.isArray(segments) || segments.length === 0) {
-        console.warn("JS: 업데이트할 세그먼트 데이터가 없거나 비어 있습니다.", segments);
-        return;
-      }
+    function drawRouteWithProgress(currentIdx) {
+      if (!routeCoords || routeCoords.length < 2) return;
 
       clearRoutePolylines();
 
-      segments.forEach((segment, idx) => {
-        // 🔍 start / end 필드 여러 형태 대응
-        const s = segment.startPoint || segment.start || segment.from;
-        const e = segment.endPoint   || segment.end   || segment.to;
+      for (let i = 0; i < routeCoords.length - 1; i++) {
+        const from = routeCoords[i];
+        const to   = routeCoords[i + 1];
 
-        if (!s || !e) {
-          console.warn("세그먼트에 start/end 정보 없음, index=", idx, segment);
-          return;
-        }
-
-        const sLat = Number(s.lat ?? s.latitude);
-        const sLng = Number(s.lng ?? s.longitude);
-        const eLat = Number(e.lat ?? e.latitude);
-        const eLng = Number(e.lng ?? e.longitude);
-
-        if (Number.isNaN(sLat) || Number.isNaN(sLng) ||
-            Number.isNaN(eLat) || Number.isNaN(eLng)) {
-          console.warn("lat/lng 파싱 실패, index=", idx, { s, e });
-          return;
-        }
-
-        const color = segment.isPassed ? '#555555' : '#8BC34A'; // 회색 : 연두색
+        const isPassed = i < currentIdx;
+        const color = isPassed ? '#555555' : '#8BC34A'; // 회색 / 연두색
         const weight = isNavigationMode ? 8 : 6;
 
-        const linePath = [
-          new kakao.maps.LatLng(sLat, sLng),
-          new kakao.maps.LatLng(eLat, eLng)
-        ];
+        const linePath = [from, to];
 
         const polyline = new kakao.maps.Polyline({
           path: linePath,
@@ -277,35 +252,31 @@
 
         polyline.setMap(map);
         routePolylines.push(polyline);
-      });
-
-      console.log("✅ updateRouteSegments 완료, segments 개수:", routePolylines.length);
+      }
     }
 
     /* ========= 추천 경로 그리기 ========= */
     window.showRecommendedRoute = function(data) {
-      // 🔹 segments 필드 여러 이름 대응
-      let segments = null;
-      if (Array.isArray(data.segments)) {
-        segments = data.segments;
-      } else if (Array.isArray(data.routeSegments)) {
-        segments = data.routeSegments;
-      } else if (Array.isArray(data.route_segments)) {
-        segments = data.route_segments;
-      }
+      console.log("📦 showRecommendedRoute data:", data);
 
       routeCoords = [];
 
+      // 🔹 1) polyline 배열 우선 사용 (예전처럼)
       if (Array.isArray(data.polyline)) {
-        // polyline: [{lat, lng}, ...] 형태
-        routeCoords = data.polyline
-          .filter(p => p && typeof p.lat === 'number' && typeof p.lng === 'number')
-          .map(p => new kakao.maps.LatLng(p.lat, p.lng));
-      } else if (segments && segments.length > 0) {
-        // segments 기반으로 routeCoords 재구성
-        segments.forEach((seg, i) => {
-          const s = seg.startPoint || seg.start || seg.from;
-          const e = seg.endPoint   || seg.end   || seg.to;
+        data.polyline.forEach(p => {
+          if (!p) return;
+          const lat = Number(p.lat ?? p.latitude);
+          const lng = Number(p.lng ?? p.longitude);
+          if (Number.isNaN(lat) || Number.isNaN(lng)) return;
+          routeCoords.push(new kakao.maps.LatLng(lat, lng));
+        });
+      }
+
+      // 🔹 2) 혹시 polyline이 없고 segments만 있는 경우: segments로부터 coords 복원
+      if ((!routeCoords || routeCoords.length === 0) && Array.isArray(data.segments)) {
+        data.segments.forEach((seg, i) => {
+          const s = seg.startPoint || seg.start || seg.from || seg.start_point;
+          const e = seg.endPoint   || seg.end   || seg.to   || seg.end_point;
           if (!s || !e) return;
 
           const sLat = Number(s.lat ?? s.latitude);
@@ -313,25 +284,24 @@
           const eLat = Number(e.lat ?? e.latitude);
           const eLng = Number(e.lng ?? e.longitude);
           if (Number.isNaN(sLat) || Number.isNaN(sLng) ||
-              Number.isNaN(eLat) || Number.isNaN(eLng)) {
-            return;
-          }
+              Number.isNaN(eLat) || Number.isNaN(eLng)) return;
 
           if (i === 0) {
             routeCoords.push(new kakao.maps.LatLng(sLat, sLng));
           }
           routeCoords.push(new kakao.maps.LatLng(eLat, eLng));
         });
-      } else {
-        console.warn("❌ showRecommendedRoute: polyline/segments 둘 다 없음", data);
+      }
+
+      if (!routeCoords || routeCoords.length < 2) {
+        console.warn("❌ routeCoords 비어있음. polyline/segments 둘 다 파싱 실패.", data);
         return;
       }
 
-      // ⭐ 턴 정보 세팅
+      // ⭐ 턴 정보 세팅 (기존 로직 유지)
       routeTurns = [];
       if (Array.isArray(data.turns)) {
         data.turns.forEach((t, idx) => {
-          // 1) lat/lng 직접 들어온 경우
           if (typeof t.lat === 'number' && typeof t.lng === 'number') {
             routeTurns.push({
               lat: t.lat,
@@ -341,9 +311,7 @@
               instruction: t.instruction || "",
               id: t.id ?? idx.toString(),
             });
-          }
-          // 2) atDistM만 있고 좌표는 없는 경우 → polyline 위에서 계산
-          else if (typeof t.atDistM === 'number' && routeCoords.length > 1) {
+          } else if (typeof t.atDistM === 'number' && routeCoords.length > 1) {
             if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
               return;
             }
@@ -381,27 +349,8 @@
       // 기존 것들 정리
       hideRunnerOnRoute();
 
-      // ⭐ 세그먼트 원본 저장 & 기본 isPassed=false 로 초기화
-      if (segments && segments.length > 0) {
-        routeSegmentsRaw = segments.map(seg => {
-          const cloned = Object.assign({}, seg);
-          cloned.isPassed = false;
-          return cloned;
-        });
-        window.updateRouteSegments(routeSegmentsRaw);
-      } else {
-        // segments가 없으면 전체 초록색 라인 하나
-        const polyline = new kakao.maps.Polyline({
-          path: routeCoords,
-          strokeWeight: 6,
-          strokeColor: '#00FF7F',
-          strokeOpacity: 0.96,
-          strokeStyle: 'solid',
-          zIndex: 3,
-        });
-        polyline.setMap(map);
-        routePolylines.push(polyline);
-      }
+      // ⭐ 처음엔 전구간 연두색으로 그리기
+      drawRouteWithProgress(-1);
 
       // 출발/도착 마커
       if (routeCoords.length > 0) {
@@ -440,10 +389,13 @@
       // 2. 경로 이탈 감지
       const cur = new kakao.maps.LatLng(lat, lng);
       let minDist = Infinity;
+      let nearestIdxForOffRoute = 0;
+
       for (let i = 0; i < routeCoords.length; i++) {
         const d = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
         if (d < minDist) {
           minDist = d;
+          nearestIdxForOffRoute = i;
         }
       }
 
@@ -465,31 +417,9 @@
         window.r2uLastOffRouteSpoken = false;
       }
 
-      // 3. ⭐ 지나온 구간 회색 처리 (segments 기반)
-      if (routeSegmentsRaw && routeSegmentsRaw.length && routeCoords.length > 1) {
-        // 현재 위치와 가장 가까운 routeCoords 인덱스 찾기
-        let nearestIdx = 0;
-        let min2 = Infinity;
-        for (let i = 0; i < routeCoords.length; i++) {
-          const d2 = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
-          if (d2 < min2) {
-            min2 = d2;
-            nearestIdx = i;
-          }
-        }
-
-        // routeCoords 는 length = segments + 1 가정
-        const updatedSegments = [];
-        for (let i = 0; i < routeSegmentsRaw.length; i++) {
-          const seg = routeSegmentsRaw[i];
-          const cloned = Object.assign({}, seg);
-          // i 번째 세그먼트는 routeCoords[i] ~ routeCoords[i+1] 구간
-          cloned.isPassed = i < nearestIdx;
-          updatedSegments.push(cloned);
-        }
-        routeSegmentsRaw = updatedSegments;
-        window.updateRouteSegments(routeSegmentsRaw);
-      }
+      // 3. ⭐ 지나온 구간 회색 처리 (routeCoords 기준)
+      //    - nearestIdxForOffRoute보다 앞쪽 인덱스를 "지나온 구간"으로 본다.
+      drawRouteWithProgress(nearestIdxForOffRoute);
     }
 
     /* ========= 지도 자동 따라가기 ========= */
@@ -578,7 +508,6 @@
 
       routeCoords = [];
       routeTurns = [];
-      routeSegmentsRaw = [];
       window.r2uSpokenTurnIds = new Set();
       window.r2uLastIdx = 0;
       window.r2uIsOffRoute = false;
