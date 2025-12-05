@@ -1,605 +1,592 @@
 <!doctype html> 
 <html lang="ko">
 <head>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-	<title>R2U Kakao Map</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>R2U Kakao Map</title>
 
-	<style>
-		html, body {
-			margin:0;
-			padding:0;
-			height:100%;
-			overflow:hidden;
-		}
-		#map { width:100%; height:100vh; }
+  <style>
+    html, body {
+      margin:0;
+      padding:0;
+      height:100%;
+      overflow:hidden;
+    }
+    #map { width:100%; height:100vh; }
 
-		/* 🔵 러너 아이콘 */
-		.runner-wrapper {
-			position: absolute;
-			transform: translate(-50%, -50%);  /* 중심이 좌표에 딱 오도록 */
-			/* 🚨 클릭/터치 이벤트를 지도에 전달하도록 설정 (CSS는 유효함) */
-			pointer-events:none; 
-		}
+    /* 🔵 러너 아이콘 */
+    .runner-wrapper {
+      position: absolute;
+      transform: translate(-50%, -50%);  /* 중심이 좌표에 딱 오도록 */
+      /* 🚨 클릭/터치 이벤트를 지도에 전달하도록 설정 (CSS는 유효함) */
+      pointer-events: none; /* 빨간줄 신경 안 써도 됨 */
+    }
 
-		.user-dir-marker-outer {
-			width: 34px;
-			height: 34px;
-			border-radius: 50%;
-			background: rgba(33, 150, 243, 0.28);
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			box-sizing: border-box;
-			transition: transform 0.18s linear;
-			will-change: transform;
-		}
+    .user-dir-marker-outer {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: rgba(33, 150, 243, 0.28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      transition: transform 0.18s linear;
+      will-change: transform;
+    }
 
-		.user-dir-marker-core {
-			width: 16px;
-			height: 16px;
-			border-radius: 50%;
-			background: #1E88E5;
-			border: 3px solid #FFFF;
-			box-shadow: 0 0 5px rgba(0,0,0,0.4);
-			position: relative;
-		}
+    .user-dir-marker-core {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #1E88E5;
+      border: 3px solid #FFFF;
+      box-shadow: 0 0 5px rgba(0,0,0,0.4);
+      position: relative;
+    }
 
-		.user-dir-marker-arrow {
-			position: absolute;
-			top: -14px;
-			left: 50%;
-			transform: translateX(-50%);
-			width: 0;
-			height: 0;
-			border-left: 6px solid transparent;
-			border-right: 6px solid transparent;
-			border-bottom: 12px solid #1E88E5;
-		}
+    .user-dir-marker-arrow {
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 12px solid #1E88E5;
+    }
 
-		/* 코스 위 방향 화살표 (출발/턴 지점용) */
-		.route-arrow {
-			width: 0;
-			height: 0;
-			border-left: 8px solid transparent;
-			border-right: 8px solid transparent;
-			border-bottom: 16px solid #00FA73; /* 기본: 형광초록 */
-			filter: drop-shadow(0 0 3px rgba(0,0,0,0.8));
-		}
-	</style>
+    /* 코스 위 방향 화살표 (출발/턴 지점용) */
+    .route-arrow {
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 16px solid #00FA73; /* 기본: 형광초록 */
+      filter: drop-shadow(0 0 3px rgba(0,0,0,0.8));
+    }
+  </style>
 
-	<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry,geometry"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry,geometry"></script>
 </head>
 
 <body>
-	<div id="map"></div>
-
-	<script>
-		/* ========= 전역 ========= */
-		window.r2uOffRouteWarned = false;   // (미사용 예전 플래그)
-		window.r2uBackToRouteWarned = false;
-
-		// ⭐ 추가: 경로 진행/이탈 관련 전역 플래그
-		window.r2uIsOffRoute = false;       // 현재 경로 이탈 여부
-		window.r2uLastOffRouteSpoken = false; // 이탈 안내 한 번만 읽기
-		window.r2uLastIdx = 0;              // 진행 인덱스 안정화용
-
-		let map;
-
-		let routeCoords = [];  // Polyline 좌표 (턴 계산용)
-		
-		// 🚨 수정: 기존 Polyline 인스턴스들을 모두 담을 배열로 변경 (세그먼트 단위)
-		let routePolylines = [];  // 모든 경로 세그먼트 Polyline 인스턴스 (지나온 길/남은 길)
-		
-		let routeLineBase = null;   // 흰색 두꺼운 베이스 (네비 모드)
-
-		let startMarker = null;
-		let endMarker = null;
-
-		let runnerOverlay = null;
-		let runnerWrapperDiv = null;
-
-		let isNavigationMode = false;
-		let defaultMapLevel = 3;
-
-		let routeArrows = []; // 방향 화살표들
-		let routeTurns = [];  // ⭐ 턴 위치 정보 (좌/우회전 지점)
-
-
-
-		/* ========= 지도 초기화 ========= */
-		function initMap() {
-			const container = document.getElementById('map');
-			map = new kakao.maps.Map(container, {
-				center: new kakao.maps.LatLng(37.4507, 126.6530),
-				level: 3
-			});
-			defaultMapLevel = map.getLevel();
-		}
-		initMap();
-
-		/* ========= 방향 화살표 ========= */
-		function createRouteArrows(coords) {
-			if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
-				return;
-			}
-			// 기존 화살표 제거
-			if (routeArrows.length) {
-				routeArrows.forEach(a => a.setMap(null));
-				routeArrows = [];
-			}
-			if (!coords || coords.length < 2) return;
-
-			// 2️⃣ 턴 지점 화살표 (좌/우회전 지점에만)
-			if (routeTurns && routeTurns.length) {
-				routeTurns.forEach(turn => {
-					const tLat = turn.lat;
-					const tLng = turn.lng;
-					if (typeof tLat !== 'number' || typeof tLng !== 'number') return;
-
-					const pos = new kakao.maps.LatLng(tLat, tLng);
-
-					// 이 턴 위치와 가장 가까운 polyline segment 찾기
-					let nearestIdx = 0;
-					let minDist = Infinity;
-					for (let i = 0; i < coords.length; i++) {
-						const d = kakao.maps.geometry.spherical.computeDistanceBetween(
-							pos,
-							coords[i]
-						);
-						if (d < minDist) {
-							minDist = d;
-							nearestIdx = i;
-						}
-					}
-
-					const baseIdx = Math.min(nearestIdx, coords.length - 2);
-					const segP1 = coords[baseIdx];
-					const segP2 = coords[baseIdx + 1];
-
-					const dx = segP2.getLng() - segP1.getLng();
-					const dy = segP2.getLat() - segP1.getLat();
-					const angleRad = Math.atan2(dy, dx);
-					const angleDeg = angleRad * 180 / Math.PI;
-					const rotateDeg = angleDeg - 90;
-
-					// 타입별 색상 (좌/우회전 구분용)
-					let color = '#FFFFFF';
-					if (turn.type === 'left') {
-						color = '#FF7043';   // 좌회전: 주황
-					} else if (turn.type === 'right') {
-						color = '#42A5F5';   // 우회전: 파랑
-					} else {
-						color = '#FFFFFF';   // 직진/기타
-					}
-
-					const html =
-						`<div class="route-arrow" style="
-							transform: rotate(${rotateDeg}deg);
-							transform-origin: 50% 50%;
-							border-bottom-color: ${color};
-						"></div>`;
-
-					const overlay = new kakao.maps.CustomOverlay({
-						position: pos,
-						content: html,
-						zIndex: 5
-					});
-					overlay.setMap(map);
-					routeArrows.push(overlay);
-				});
-			}
-		}
-
-		/* ========= 네비게이션 모드 on/off ========= */
-		window.setNavigationMode = function(isNav) {
-			isNavigationMode = !!isNav;
-
-			if (isNavigationMode) {
-				// 출발점쪽 확대
-				if (map && routeCoords.length > 0) {
-					const startPos = routeCoords[0];
-					map.setLevel(2);       // 확대
-					map.panTo(startPos);   // 출발점 기준
-				} else if (map) {
-					map.setLevel(2);
-				}
-
-				// 흰색 베이스 라인 (routeCoords를 기반으로 한 번만 그림)
-				if (routeCoords.length && !routeLineBase) {
-					routeLineBase = new kakao.maps.Polyline({
-						path: routeCoords,
-						strokeWeight: 10,
-						strokeColor: '#FFFFFF',
-						strokeOpacity: 0.9,
-						strokeStyle: 'solid',
-						zIndex: 1, // 가장 아래에 배치
-					});
-					routeLineBase.setMap(map);
-				}
-
-				// 방향 화살표 생성 (출발 + 턴 지점만)
-				createRouteArrows(routeCoords);
-			}
-			else {
-				// 네비 종료 → 일반 모드
-				if (map) {
-					map.setLevel(defaultMapLevel);
-				}
-
-				// 러너/경로/화살표 정리 (재사용 없이 모두 제거)
-				hideRunnerOnRoute();
-			}
-		};
-		
-		/**
-		 * 경로 폴리라인을 모두 제거합니다.
-		 */
-		function clearRoutePolylines() {
-			routePolylines.forEach(polyline => polyline.setMap(null));
-			routePolylines = [];
-		}
-		
-		/**
-		 * 🚨 Flutter에서 호출: 세그먼트 목록을 받아 경로를 그립니다. (색상 업데이트용)
-		 * 이 함수가 호출되면 기존 경로 선은 모두 지우고, isPassed 상태에 따라 색상을 입힌
-		 * 새로운 세그먼트 라인을 그립니다.
-		 * @param {Array<Object>} segments - RouteSegment 객체 배열
-		 */
-		window.updateRouteSegments = function(segments) {
-			if (!segments || segments.length === 0) {
-				console.warn("JS: 업데이트할 세그먼트 데이터가 없거나 비어 있습니다.");
-				return;
-			}
-			
-			// 기존 세그먼트 라인 제거 (routeLineBase는 남겨둠)
-			clearRoutePolylines(); 
-			
-			// 모든 세그먼트에 대해 개별 폴리라인을 그립니다.
-			segments.forEach(segment => {
-				// 🚨 수정: isPassed 상태에 따라 색상 결정
-				const color = segment.isPassed ? '#555555' : '#8BC34A'; // 회색 : 연두색
-				const weight = isNavigationMode ? 8 : 6;
-
-				const linePath = [
-					new kakao.maps.LatLng(segment.startPoint.lat, segment.startPoint.lng),
-					new kakao.maps.LatLng(segment.endPoint.lat, segment.endPoint.lng)
-				];
-
-				const polyline = new kakao.maps.Polyline({
-					path: linePath,
-					strokeWeight: weight, 
-					strokeColor: color, 
-					strokeOpacity: 0.96,
-					strokeStyle: 'solid',
-					zIndex: 3, // 흰색 베이스(1)보다 높게, 마커/화살표(5)보다 낮게 
-				});
-
-				polyline.setMap(map);
-				routePolylines.push(polyline);
-			});
-		}
-
-		/* ========= 추천 경로 그리기 ========= */
-		window.showRecommendedRoute = function(data) {
-			// ⭐ 턴 계산용으로 사용할 routeCoords 생성 (이전 polyline 구조를 가정)
-			routeCoords = [];
-			if (Array.isArray(data.polyline)) {
-				routeCoords = data.polyline.map(p => new kakao.maps.LatLng(p.lat, p.lng));
-			} else if (Array.isArray(data.segments)) {
-				// segments가 있는 경우, routeCoords를 재구성
-				data.segments.forEach((seg, i) => {
-					if (i === 0) {
-						routeCoords.push(new kakao.maps.LatLng(seg.startPoint.lat, seg.startPoint.lng));
-					}
-					routeCoords.push(new kakao.maps.LatLng(seg.endPoint.lat, seg.endPoint.lng));
-				});
-			} else {
-				return;
-			}
-
-
-			// ⭐ 턴 정보 저장 (좌/우회전 지점)
-			routeTurns = [];
-			if (Array.isArray(data.turns)) {
-				data.turns.forEach(t => {
-					// 1) lat/lng가 이미 있으면 그대로 사용
-					if (typeof t.lat === 'number' && typeof t.lng === 'number') {
-						routeTurns.push({
-							lat: t.lat,
-							lng: t.lng,
-							type: t.type || 'straight',
-							atDistM: t.atDistM || null,
-							instruction: t.instruction || "",
-						});
-					}
-					// 2) lat/lng가 없고 atDistM만 있으면, polyline 위에서 위치 계산 (routeCoords가 필수)
-					else if (typeof t.atDistM === 'number' && routeCoords.length > 1) {
-						if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
-							return;
-						}
-
-						const target = t.atDistM;
-						let acc = 0;
-						for (let i = 0; i < routeCoords.length - 1; i++) {
-							const segLen = kakao.maps.geometry.spherical.computeDistanceBetween(
-								routeCoords[i],
-								routeCoords[i + 1]
-							);
-							if (acc + segLen >= target) {
-								const ratio = (target - acc) / segLen;
-								const lat =
-									routeCoords[i].getLat() +
-									(routeCoords[i + 1].getLat() - routeCoords[i].getLat()) * ratio;
-								const lng =
-									routeCoords[i].getLng() +
-									(routeCoords[i + 1].getLng() - routeCoords[i].getLng()) * ratio;
-								routeTurns.push({
-									lat: lat,
-									lng: lng,
-									type: t.type || 'straight',
-									atDistM: t.atDistM,
-									instruction: t.instruction || "",
-								});
-								break;
-							}
-							acc += segLen;
-						}
-					}
-				});
-			}
-
-			// 기존 라인/마커/화살표 제거 (hideRunnerOnRoute 함수 재사용)
-			window.hideRunnerOnRoute(); 
-			
-			// 🚨 경로 세그먼트 초기화 (segments 데이터가 있으면 사용)
-			if (Array.isArray(data.segments)) {
-				window.updateRouteSegments(data.segments);
-			} else {
-				// segments가 없으면, 전체 초록색 라인 하나만 그립니다.
-				const polyline = new kakao.maps.Polyline({
-					path: routeCoords,
-					strokeWeight: 6,
-					strokeColor: '#00FF7F',
-					strokeOpacity: 0.96,
-					strokeStyle: 'solid',
-					zIndex: 3,
-				});
-				polyline.setMap(map);
-				routePolylines.push(polyline);
-			}
-
-			// 출발/도착 마커
-			if (routeCoords.length > 0) {
-				startMarker = new kakao.maps.Marker({
-					map: map,
-					position: routeCoords[0],
-				});
-				endMarker = new kakao.maps.Marker({
-					map: map,
-					position: routeCoords[routeCoords.length - 1],
-				});
-				
-				// ✅ 코스 전체가 보이도록 축소/이동
-				const bounds = new kakao.maps.LatLngBounds();
-				routeCoords.forEach(p => bounds.extend(p));
-				map.setBounds(bounds);
-			}
-
-
-			window.r2uCourse = data;
-			window.r2uTurns = routeTurns || [];
-			window.r2uSpokenTurnIds = new Set();
-			window.r2uLastIdx = 0;
-			window.r2uIsOffRoute = false;
-			window.r2uLastOffRouteSpoken = false;
-		};
-
-		
-		/**
-		 * 🚨 수정: 이 함수는 더 이상 경로 진행을 업데이트하지 않고, TTS 체크와 경로 이탈 안내만 담당합니다.
-		 * 경로 색상 업데이트는 Flutter에서 `updateRouteSegments`를 통해 처리합니다.
-		 */
-		window.updateRouteProgress = function(lat, lng) {
-			if (!routeCoords.length) return;
-			if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) return;
-
-			// 1. TTS 체크는 계속 수행
-			r2uCheckTurnTts(lat, lng);
-			
-			// 2. 경로 이탈 감지 15m 기준 로직 (TTS 안내용으로 유지)
-			const cur = new kakao.maps.LatLng(lat, lng);
-			let minDist = Infinity;
-			for (let i = 0; i < routeCoords.length; i++) {
-				const d = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
-				if (d < minDist) {
-					minDist = d;
-				}
-			}
-			
-			let isOffRoute = minDist > 15;
-			window.r2uIsOffRoute = isOffRoute; // 러너 아이콘 색상 변경에 사용
-
-			if (isOffRoute) {
-				if (!window.r2uLastOffRouteSpoken) {
-					window.r2uLastOffRouteSpoken = true;
-
-					const msg = "경로에서 벗어났습니다. 경로를 확인해주세요.";
-
-					if (window.R2UTTS && window.R2UTTS.postMessage) {
-						window.R2UTTS.postMessage(msg);
-					}
-					else if (typeof R2UTTS !== "undefined" && R2UTTS.postMessage) {
-						R2UTTS.postMessage(msg);
-					}
-				}
-			} else {
-				// 경로 복귀 → 안내 초기화
-				window.r2uLastOffRouteSpoken = false;
-			}
-		}
-
-		/* ========= 지도 자동 따라가기 ========= */
-		window.followUser = function(lat, lng) {
-			const pos = new kakao.maps.LatLng(lat, lng);
-			map.panTo(pos);
-		};
-
-		/* ========= 러너 아이콘 업데이트 ========= */
-		window.updateRunnerOnRoute = function(lat, lng, heading, onRoute) {
-			if (!isNavigationMode) return;
-
-			const pos = new kakao.maps.LatLng(lat, lng);
-
-			// ⭐ 수정: onRoute 매개변수를 그대로 사용하여 색상 결정 (Dart에서 계산한 값 사용)
-			// onRoute가 'false' 또는 false일 경우 이탈로 간주
-			const offRouteFlag = !(onRoute === true || onRoute === "true"); 
-
-			// 🚨 수정: 이탈 플래그를 CSS에 반영할 때, 러너 아이콘의 색상도 변경해야 합니다.
-			const color = offRouteFlag ? "#E53935" : "#1E88E5";
-
-			const h = Number(heading || 0);
-			const offsetDeg = 0;
-
-			if (!runnerOverlay) {
-				runnerWrapperDiv = document.createElement("div");
-				runnerWrapperDiv.className = "runner-wrapper";
-
-				// 화살표 색상도 동적으로 설정하도록 수정
-				const html = `
-					<div class="user-dir-marker-outer" id="runnerOuter">
-						<div class="user-dir-marker-core" id="runnerCore" style="background:${color};"></div>
-						<div class="user-dir-marker-arrow" style="border-bottom-color: ${color};"></div>
-					</div>
-				`;
-				runnerWrapperDiv.innerHTML = html;
-
-				runnerOverlay = new kakao.maps.CustomOverlay({
-					position: pos,
-					content: runnerWrapperDiv,
-					zIndex: 5,
-				});
-				runnerOverlay.setMap(map);
-			} else {
-				runnerOverlay.setPosition(pos);
-			}
-
-			// 회전
-			const outer = runnerWrapperDiv.querySelector("#runnerOuter");
-			if (outer) {
-				outer.style.transform = `rotate(${h + offsetDeg}deg)`;
-			}
-
-			// 색상 (코어)
-			const core = runnerWrapperDiv.querySelector("#runnerCore");
-			if (core) {
-				core.style.background = color;
-			}
-			// 색상 (화살표)
-			const arrow = runnerWrapperDiv.querySelector(".user-dir-marker-arrow");
-			if (arrow) {
-				arrow.style.borderBottomColor = color;
-			}
-		};
-
-		/* ========= 러너/경로/화살표 정리 ========= */
-		window.hideRunnerOnRoute = function() {
-			if (runnerOverlay) {
-				runnerOverlay.setMap(null);
-				runnerOverlay = null;
-			}
-			runnerWrapperDiv = null;
-
-			if (routeArrows.length) {
-				routeArrows.forEach(a => a.setMap(null));
-				routeArrows = [];
-			}
-
-			if (routeLineBase) {
-				routeLineBase.setMap(null);
-				routeLineBase = null;
-			}
-			
-			// 🚨 수정: 모든 세그먼트 폴리라인 제거
-			clearRoutePolylines();
-			
-			if (startMarker) {
-				startMarker.setMap(null);
-				startMarker = null;
-			}
-			if (endMarker) {
-				endMarker.setMap(null);
-				endMarker = null;
-			}
-
-			routeCoords = [];
-			routeTurns = [];
-			window.r2uSpokenTurnIds = new Set();
-			window.r2uLastIdx = 0;
-			window.r2uIsOffRoute = false;
-			window.r2uLastOffRouteSpoken = false;
-		};
-
-		window.r2uCourse = window.r2uCourse || null;
-		window.r2uTurns = window.r2uTurns || [];
-		window.r2uSpokenTurnIds = window.r2uSpokenTurnIds || new Set();
-
-		// 간단 거리 계산 (미터 단위)
-		function r2uDistanceMeter(lat1, lng1, lat2, lng2) {
-			const R = 6371000; // m
-			const toRad = Math.PI / 180;
-			const dLat = (lat2 - lat1) * toRad;
-			const dLng = (lng2 - lng1) * toRad;
-			const a =
-				Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-				Math.cos(lat1 * toRad) *
-					Math.cos(lat2 * toRad) *
-					Math.sin(dLng / 2) * Math.sin(dLng / 2);
-			const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-			return R * c;
-		}
-
-		// ✅ 내 위치 기준으로 "어떤 턴을 말해야 하나" 체크
-		function r2uCheckTurnTts(currentLat, currentLng) {
-			if (!isNavigationMode) return;
-			if (!window.r2uTurns || window.r2uTurns.length === 0) return;
-
-			const THRESHOLD = 40; // 몇 m 앞에서 읽을지
-
-			for (let i = 0; i < window.r2uTurns.length; i++) {
-				const t = window.r2uTurns[i];
-
-				// 🔎 턴 좌표 필드 추측: lat/lng 또는 latitude/longitude 또는 point.lat/point.lng
-				const turnLat = t.lat ?? t.latitude ?? (t.point && t.point.lat);
-				const turnLng = t.lng ?? t.longitude ?? (t.point && t.point.lng);
-				if (turnLat == null || turnLng == null) continue;
-
-				const turnId = t.id ?? i.toString();
-				const dist = r2uDistanceMeter(currentLat, currentLng, turnLat, turnLng);
-
-				// 🚨 TTS 디버깅을 위한 로그 추가
-				console.log(`TTS Check: Turn ${i} (${t.type || 'straight'}) at ${dist.toFixed(1)}m. Spoken: ${window.r2uSpokenTurnIds.has(turnId)}`);
-
-				if (dist < THRESHOLD && !window.r2uSpokenTurnIds.has(turnId)) {
-					// 👂 한 번만 읽도록 기록
-					window.r2uSpokenTurnIds.add(turnId);
-
-					const msg = t.instruction || "";
-					if (!msg) continue;
-					
-					console.log(`[TTS SPEAK] Speaking turn instruction for turn ${i}: ${msg}`); // TTS 호출 로그
-
-					// 기존 window.R2UTTS 우선
-					if (window.R2UTTS && window.R2UTTS.postMessage) {
-						window.R2UTTS.postMessage(msg);
-					}
-					// ⭐ 추가: R2UTTS 전역 객체로도 지원
-					else if (typeof R2UTTS !== "undefined" && R2UTTS.postMessage) {
-						R2UTTS.postMessage(msg);
-					}
-				}
-			}
-		}
-	</script>
+  <div id="map"></div>
+
+  <script>
+    /* ========= 전역 ========= */
+    window.r2uOffRouteWarned = false;
+    window.r2uBackToRouteWarned = false;
+
+    window.r2uIsOffRoute = false;
+    window.r2uLastOffRouteSpoken = false;
+    window.r2uLastIdx = 0;
+
+    let map;
+
+    let routeCoords = [];              // Polyline 좌표
+    let routePolylines = [];           // 세그먼트별 Polyline 인스턴스
+    let routeLineBase = null;          // 흰색 두꺼운 베이스
+    let startMarker = null;
+    let endMarker = null;
+
+    let runnerOverlay = null;
+    let runnerWrapperDiv = null;
+
+    let isNavigationMode = false;
+    let defaultMapLevel = 3;
+
+    let routeArrows = [];              // 턴 화살표
+    let routeTurns = [];               // 턴 정보 배열
+
+    // ⭐ 추가: 백엔드에서 받은 세그먼트 원본 (지나온 길 색 갱신용)
+    let routeSegmentsRaw = [];
+
+    /* ========= 지도 초기화 ========= */
+    function initMap() {
+      const container = document.getElementById('map');
+      map = new kakao.maps.Map(container, {
+        center: new kakao.maps.LatLng(37.4507, 126.6530),
+        level: 3
+      });
+      defaultMapLevel = map.getLevel();
+    }
+    initMap();
+
+    /* ========= 방향 화살표 ========= */
+    function createRouteArrows(coords) {
+      if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
+        return;
+      }
+
+      if (routeArrows.length) {
+        routeArrows.forEach(a => a.setMap(null));
+        routeArrows = [];
+      }
+      if (!coords || coords.length < 2) return;
+
+      if (routeTurns && routeTurns.length) {
+        routeTurns.forEach(turn => {
+          const tLat = turn.lat;
+          const tLng = turn.lng;
+          if (typeof tLat !== 'number' || typeof tLng !== 'number') return;
+
+          const pos = new kakao.maps.LatLng(tLat, tLng);
+
+          let nearestIdx = 0;
+          let minDist = Infinity;
+          for (let i = 0; i < coords.length; i++) {
+            const d = kakao.maps.geometry.spherical.computeDistanceBetween(
+              pos,
+              coords[i]
+            );
+            if (d < minDist) {
+              minDist = d;
+              nearestIdx = i;
+            }
+          }
+
+          const baseIdx = Math.min(nearestIdx, coords.length - 2);
+          const segP1 = coords[baseIdx];
+          const segP2 = coords[baseIdx + 1];
+
+          const dx = segP2.getLng() - segP1.getLng();
+          const dy = segP2.getLat() - segP1.getLat();
+          const angleRad = Math.atan2(dy, dx);
+          const angleDeg = angleRad * 180 / Math.PI;
+          const rotateDeg = angleDeg - 90;
+
+          let color = '#FFFFFF';
+          if (turn.type === 'left') {
+            color = '#FF7043';
+          } else if (turn.type === 'right') {
+            color = '#42A5F5';
+          } else {
+            color = '#FFFFFF';
+          }
+
+          const html =
+            `<div class="route-arrow" style="
+              transform: rotate(${rotateDeg}deg);
+              transform-origin: 50% 50%;
+              border-bottom-color: ${color};
+            "></div>`;
+
+          const overlay = new kakao.maps.CustomOverlay({
+            position: pos,
+            content: html,
+            zIndex: 5
+          });
+          overlay.setMap(map);
+          routeArrows.push(overlay);
+        });
+      }
+    }
+
+    /* ========= 네비게이션 모드 on/off ========= */
+    window.setNavigationMode = function(isNav) {
+      isNavigationMode = !!isNav;
+
+      if (isNavigationMode) {
+        if (map && routeCoords.length > 0) {
+          const startPos = routeCoords[0];
+          map.setLevel(2);
+          map.panTo(startPos);
+        } else if (map) {
+          map.setLevel(2);
+        }
+
+        if (routeCoords.length && !routeLineBase) {
+          routeLineBase = new kakao.maps.Polyline({
+            path: routeCoords,
+            strokeWeight: 10,
+            strokeColor: '#FFFFFF',
+            strokeOpacity: 0.9,
+            strokeStyle: 'solid',
+            zIndex: 1,
+          });
+          routeLineBase.setMap(map);
+        }
+
+        createRouteArrows(routeCoords);
+      } else {
+        if (map) {
+          map.setLevel(defaultMapLevel);
+        }
+        hideRunnerOnRoute();
+      }
+    };
+
+    /** 모든 세그먼트 폴리라인 제거 */
+    function clearRoutePolylines() {
+      routePolylines.forEach(polyline => polyline.setMap(null));
+      routePolylines = [];
+    }
+
+    /**
+     * 🚨 Flutter에서 호출: 세그먼트 목록을 받아 경로를 그립니다.
+     * isPassed 상태에 따라 색상을 다르게 그립니다.
+     */
+    window.updateRouteSegments = function(segments) {
+      if (!segments || segments.length === 0) {
+        console.warn("JS: 업데이트할 세그먼트 데이터가 없거나 비어 있습니다.");
+        return;
+      }
+
+      clearRoutePolylines();
+
+      segments.forEach(segment => {
+        const color = segment.isPassed ? '#555555' : '#8BC34A'; // 회색 : 연두색
+        const weight = isNavigationMode ? 8 : 6;
+
+        const linePath = [
+          new kakao.maps.LatLng(segment.startPoint.lat, segment.startPoint.lng),
+          new kakao.maps.LatLng(segment.endPoint.lat, segment.endPoint.lng)
+        ];
+
+        const polyline = new kakao.maps.Polyline({
+          path: linePath,
+          strokeWeight: weight,
+          strokeColor: color,
+          strokeOpacity: 0.96,
+          strokeStyle: 'solid',
+          zIndex: 3,
+        });
+
+        polyline.setMap(map);
+        routePolylines.push(polyline);
+      });
+    }
+
+    /* ========= 추천 경로 그리기 ========= */
+    window.showRecommendedRoute = function(data) {
+      routeCoords = [];
+      if (Array.isArray(data.polyline)) {
+        routeCoords = data.polyline.map(p => new kakao.maps.LatLng(p.lat, p.lng));
+      } else if (Array.isArray(data.segments)) {
+        data.segments.forEach((seg, i) => {
+          if (i === 0) {
+            routeCoords.push(new kakao.maps.LatLng(seg.startPoint.lat, seg.startPoint.lng));
+          }
+          routeCoords.push(new kakao.maps.LatLng(seg.endPoint.lat, seg.endPoint.lng));
+        });
+      } else {
+        return;
+      }
+
+      // ⭐ 턴 정보 세팅
+      routeTurns = [];
+      if (Array.isArray(data.turns)) {
+        data.turns.forEach(t => {
+          if (typeof t.lat === 'number' && typeof t.lng === 'number') {
+            routeTurns.push({
+              lat: t.lat,
+              lng: t.lng,
+              type: t.type || 'straight',
+              atDistM: t.atDistM || null,
+              instruction: t.instruction || "",
+            });
+          } else if (typeof t.atDistM === 'number' && routeCoords.length > 1) {
+            if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
+              return;
+            }
+            const target = t.atDistM;
+            let acc = 0;
+            for (let i = 0; i < routeCoords.length - 1; i++) {
+              const segLen = kakao.maps.geometry.spherical.computeDistanceBetween(
+                routeCoords[i],
+                routeCoords[i + 1]
+              );
+              if (acc + segLen >= target) {
+                const ratio = (target - acc) / segLen;
+                const lat =
+                  routeCoords[i].getLat() +
+                  (routeCoords[i + 1].getLat() - routeCoords[i].getLat()) * ratio;
+                const lng =
+                  routeCoords[i].getLng() +
+                  (routeCoords[i + 1].getLng() - routeCoords[i].getLng()) * ratio;
+                routeTurns.push({
+                  lat: lat,
+                  lng: lng,
+                  type: t.type || 'straight',
+                  atDistM: t.atDistM,
+                  instruction: t.instruction || "",
+                });
+                break;
+              }
+              acc += segLen;
+            }
+          }
+        });
+      }
+
+      // 기존 것들 정리
+      hideRunnerOnRoute();
+
+      // ⭐ 세그먼트 원본 저장
+      if (Array.isArray(data.segments)) {
+        routeSegmentsRaw = data.segments.slice();  // 얕은 복사
+        // 처음에는 모두 isPassed=false로 그려질 수 있게 보장
+        routeSegmentsRaw = routeSegmentsRaw.map(seg => {
+          const cloned = Object.assign({}, seg);
+          cloned.isPassed = false;
+          return cloned;
+        });
+        window.updateRouteSegments(routeSegmentsRaw);
+      } else {
+        // segments가 없으면 전체 초록색 라인 하나
+        const polyline = new kakao.maps.Polyline({
+          path: routeCoords,
+          strokeWeight: 6,
+          strokeColor: '#00FF7F',
+          strokeOpacity: 0.96,
+          strokeStyle: 'solid',
+          zIndex: 3,
+        });
+        polyline.setMap(map);
+        routePolylines.push(polyline);
+      }
+
+      // 출발/도착 마커
+      if (routeCoords.length > 0) {
+        startMarker = new kakao.maps.Marker({
+          map: map,
+          position: routeCoords[0],
+        });
+        endMarker = new kakao.maps.Marker({
+          map: map,
+          position: routeCoords[routeCoords.length - 1],
+        });
+
+        const bounds = new kakao.maps.LatLngBounds();
+        routeCoords.forEach(p => bounds.extend(p));
+        map.setBounds(bounds);
+      }
+
+      window.r2uCourse = data;
+      window.r2uTurns = routeTurns || [];
+      window.r2uSpokenTurnIds = new Set();
+      window.r2uLastIdx = 0;
+      window.r2uIsOffRoute = false;
+      window.r2uLastOffRouteSpoken = false;
+    };
+
+    /**
+     * 🚨 경로 색상 업데이트 + 이탈/TTS 체크 담당
+     */
+    window.updateRouteProgress = function(lat, lng) {
+      if (!routeCoords.length) return;
+      if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) return;
+
+      // 1. 턴 TTS 체크
+      r2uCheckTurnTts(lat, lng);
+
+      // 2. 경로 이탈 감지
+      const cur = new kakao.maps.LatLng(lat, lng);
+      let minDist = Infinity;
+      for (let i = 0; i < routeCoords.length; i++) {
+        const d = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
+        if (d < minDist) {
+          minDist = d;
+        }
+      }
+
+      let isOffRoute = minDist > 15;
+      window.r2uIsOffRoute = isOffRoute;
+
+      if (isOffRoute) {
+        if (!window.r2uLastOffRouteSpoken) {
+          window.r2uLastOffRouteSpoken = true;
+          const msg = "경로에서 벗어났습니다. 경로를 확인해주세요.";
+
+          if (window.R2UTTS && window.R2UTTS.postMessage) {
+            window.R2UTTS.postMessage(msg);
+          } else if (typeof R2UTTS !== "undefined" && R2UTTS.postMessage) {
+            R2UTTS.postMessage(msg);
+          }
+        }
+      } else {
+        window.r2uLastOffRouteSpoken = false;
+      }
+
+      // 3. ⭐ 지나온 구간 회색 처리 (segments 기반)
+      if (routeSegmentsRaw && routeSegmentsRaw.length && routeCoords.length > 1) {
+        // 현재 위치와 가장 가까운 routeCoords 인덱스 찾기
+        let nearestIdx = 0;
+        let min2 = Infinity;
+        for (let i = 0; i < routeCoords.length; i++) {
+          const d2 = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
+          if (d2 < min2) {
+            min2 = d2;
+            nearestIdx = i;
+          }
+        }
+
+        // routeCoords 는 length = segments + 1 이므로
+        // index 0 ~ (routeSegmentsRaw.length) 까지 있음.
+        // 현재 위치보다 "앞"에 있는 세그먼트만 isPassed = true 로 처리
+        const updatedSegments = [];
+        for (let i = 0; i < routeSegmentsRaw.length; i++) {
+          const seg = routeSegmentsRaw[i];
+          const cloned = Object.assign({}, seg);
+          // i 번째 세그먼트는 routeCoords[i] ~ routeCoords[i+1] 구간
+          cloned.isPassed = i < nearestIdx;
+          updatedSegments.push(cloned);
+        }
+        routeSegmentsRaw = updatedSegments;
+        window.updateRouteSegments(routeSegmentsRaw);
+      }
+    }
+
+    /* ========= 지도 자동 따라가기 ========= */
+    window.followUser = function(lat, lng) {
+      const pos = new kakao.maps.LatLng(lat, lng);
+      map.panTo(pos);
+    };
+
+    /* ========= 러너 아이콘 업데이트 ========= */
+    window.updateRunnerOnRoute = function(lat, lng, heading, onRoute) {
+      if (!isNavigationMode) return;
+
+      const pos = new kakao.maps.LatLng(lat, lng);
+
+      const offRouteFlag = !(onRoute === true || onRoute === "true");
+      const color = offRouteFlag ? "#E53935" : "#1E88E5";
+
+      const h = Number(heading || 0);
+      const offsetDeg = 0;
+
+      if (!runnerOverlay) {
+        runnerWrapperDiv = document.createElement("div");
+        runnerWrapperDiv.className = "runner-wrapper";
+
+        const html = `
+          <div class="user-dir-marker-outer" id="runnerOuter">
+            <div class="user-dir-marker-core" id="runnerCore" style="background:${color};"></div>
+            <div class="user-dir-marker-arrow" style="border-bottom-color: ${color};"></div>
+          </div>
+        `;
+        runnerWrapperDiv.innerHTML = html;
+
+        runnerOverlay = new kakao.maps.CustomOverlay({
+          position: pos,
+          content: runnerWrapperDiv,
+          zIndex: 5,
+        });
+        runnerOverlay.setMap(map);
+      } else {
+        runnerOverlay.setPosition(pos);
+      }
+
+      const outer = runnerWrapperDiv.querySelector("#runnerOuter");
+      if (outer) {
+        outer.style.transform = `rotate(${h + offsetDeg}deg)`;
+      }
+
+      const core = runnerWrapperDiv.querySelector("#runnerCore");
+      if (core) {
+        core.style.background = color;
+      }
+      const arrow = runnerWrapperDiv.querySelector(".user-dir-marker-arrow");
+      if (arrow) {
+        arrow.style.borderBottomColor = color;
+      }
+    };
+
+    /* ========= 러너/경로/화살표 정리 ========= */
+    window.hideRunnerOnRoute = function() {
+      if (runnerOverlay) {
+        runnerOverlay.setMap(null);
+        runnerOverlay = null;
+      }
+      runnerWrapperDiv = null;
+
+      if (routeArrows.length) {
+        routeArrows.forEach(a => a.setMap(null));
+        routeArrows = [];
+      }
+
+      if (routeLineBase) {
+        routeLineBase.setMap(null);
+        routeLineBase = null;
+      }
+
+      clearRoutePolylines();
+
+      if (startMarker) {
+        startMarker.setMap(null);
+        startMarker = null;
+      }
+      if (endMarker) {
+        endMarker.setMap(null);
+        endMarker = null;
+      }
+
+      routeCoords = [];
+      routeTurns = [];
+      routeSegmentsRaw = [];
+      window.r2uSpokenTurnIds = new Set();
+      window.r2uLastIdx = 0;
+      window.r2uIsOffRoute = false;
+      window.r2uLastOffRouteSpoken = false;
+    };
+
+    window.r2uCourse = window.r2uCourse || null;
+    window.r2uTurns = window.r2uTurns || [];
+    window.r2uSpokenTurnIds = window.r2uSpokenTurnIds || new Set();
+
+    // 간단 거리 계산 (미터 단위)
+    function r2uDistanceMeter(lat1, lng1, lat2, lng2) {
+      const R = 6371000; // m
+      const toRad = Math.PI / 180;
+      const dLat = (lat2 - lat1) * toRad;
+      const dLng = (lng2 - lng1) * toRad;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * toRad) *
+          Math.cos(lat2 * toRad) *
+          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    // ✅ 턴 TTS 체크
+    function r2uCheckTurnTts(currentLat, currentLng) {
+      if (!isNavigationMode) return;
+      if (!window.r2uTurns || window.r2uTurns.length === 0) return;
+
+      const THRESHOLD = 40; // 몇 m 앞에서 읽을지
+
+      for (let i = 0; i < window.r2uTurns.length; i++) {
+        const t = window.r2uTurns[i];
+
+        const turnLat = t.lat ?? t.latitude ?? (t.point && t.point.lat);
+        const turnLng = t.lng ?? t.longitude ?? (t.point && t.point.lng);
+        if (turnLat == null || turnLng == null) continue;
+
+        const turnId = t.id ?? i.toString();
+        const dist = r2uDistanceMeter(currentLat, currentLng, turnLat, turnLng);
+
+        console.log(`TTS Check: Turn ${i} (${t.type || 'straight'}) at ${dist.toFixed(1)}m. Spoken: ${window.r2uSpokenTurnIds.has(turnId)}`);
+
+        if (dist < THRESHOLD && !window.r2uSpokenTurnIds.has(turnId)) {
+          window.r2uSpokenTurnIds.add(turnId);
+
+          const msg = t.instruction || "";
+          if (!msg) continue;
+
+          console.log(`[TTS SPEAK] ${msg}`);
+
+          if (window.R2UTTS && window.R2UTTS.postMessage) {
+            window.R2UTTS.postMessage(msg);
+          }
+          else if (typeof R2UTTS !== "undefined" && R2UTTS.postMessage) {
+            R2UTTS.postMessage(msg);
+          }
+        }
+      }
+    }
+  </script>
 </body>
 </html>
