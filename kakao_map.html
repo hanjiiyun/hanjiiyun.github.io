@@ -439,9 +439,7 @@
       const pos = new kakao.maps.LatLng(lat, lng);
 
       // ⭐ 추가: HTML에서 계산한 경로 이탈 플래그를 우선 적용
-      const offRouteFlag = window.r2uIsOffRoute === true
-        ? true
-        : !(onRoute === true || onRoute === "true");
+      const offRouteFlag = !(onRoute === true || onRoute === "true"); // onRoute가 true가 아니면 이탈
 
       const color = offRouteFlag ? "#E53935" : "#1E88E5";
 
