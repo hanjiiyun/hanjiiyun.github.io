@@ -1,4 +1,4 @@
-<!doctype html> 
+<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
@@ -18,7 +18,8 @@
     .runner-wrapper {
       position: absolute;
       transform: translate(-50%, -50%);  /* 중심이 좌표에 딱 오도록 */
-      pointer-events: none; /* 클릭/터치 이벤트는 지도에 전달 */
+      /* 🚨 클릭/터치 이벤트를 지도에 전달하도록 설정 */
+      pointer-events: none;
     }
 
     .user-dir-marker-outer {
@@ -67,7 +68,7 @@
     }
   </style>
 
-  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f3beaea643bdd2136019b366df1190cf&libraries=geometry,geometry"></script>
 </head>
 
 <body>
@@ -84,9 +85,9 @@
 
     let map;
 
-    let routeCoords = [];      // 전체 polyline 좌표
-    let routePolylines = [];   // 구간별 Polyline 인스턴스
-    let routeLineBase = null;  // 흰색 두꺼운 베이스 (네비 모드용)
+    let routeCoords = [];              // Polyline 좌표
+    let routePolylines = [];           // 세그먼트별 Polyline 인스턴스
+    let routeLineBase = null;          // 흰색 두꺼운 베이스
     let startMarker = null;
     let endMarker = null;
 
@@ -96,8 +97,11 @@
     let isNavigationMode = false;
     let defaultMapLevel = 3;
 
-    let routeArrows = [];      // 턴 화살표
-    let routeTurns = [];       // 턴 정보 배열
+    let routeArrows = [];              // 턴 화살표
+    let routeTurns = [];               // 턴 정보 배열
+
+    // ⭐ 세그먼트 원본 (지나온 길 색 갱신용)
+    let routeSegmentsRaw = [];
 
     /* ========= 지도 초기화 ========= */
     function initMap() {
@@ -214,32 +218,32 @@
       }
     };
 
-    /** 기존 세그먼트 폴리라인들 제거 */
+    /** 모든 세그먼트 폴리라인 제거 */
     function clearRoutePolylines() {
       routePolylines.forEach(polyline => polyline.setMap(null));
       routePolylines = [];
     }
 
     /**
-     * ✅ routeCoords 기준으로
-     *    - index < currentIdx  : 회색
-     *    - index >= currentIdx : 연두색
-     * 로 구간별 라인을 다시 그립니다.
+     * 🚨 Flutter에서 호출: 세그먼트 목록을 받아 경로를 그립니다.
+     * isPassed 상태에 따라 색상을 다르게 그립니다.
      */
-    function drawRouteWithProgress(currentIdx) {
-      if (!routeCoords || routeCoords.length < 2) return;
+    window.updateRouteSegments = function(segments) {
+      if (!segments || segments.length === 0) {
+        console.warn("JS: 업데이트할 세그먼트 데이터가 없거나 비어 있습니다.");
+        return;
+      }
 
       clearRoutePolylines();
 
-      for (let i = 0; i < routeCoords.length - 1; i++) {
-        const from = routeCoords[i];
-        const to   = routeCoords[i + 1];
-
-        const isPassed = i < currentIdx;
-        const color = isPassed ? '#555555' : '#8BC34A'; // 회색 / 연두색
+      segments.forEach(segment => {
+        const color = segment.isPassed ? '#555555' : '#8BC34A'; // 회색 : 연두색
         const weight = isNavigationMode ? 8 : 6;
 
-        const linePath = [from, to];
+        const linePath = [
+          new kakao.maps.LatLng(segment.startPoint.lat, segment.startPoint.lng),
+          new kakao.maps.LatLng(segment.endPoint.lat, segment.endPoint.lng)
+        ];
 
         const polyline = new kakao.maps.Polyline({
           path: linePath,
@@ -252,56 +256,33 @@
 
         polyline.setMap(map);
         routePolylines.push(polyline);
-      }
+      });
     }
 
     /* ========= 추천 경로 그리기 ========= */
     window.showRecommendedRoute = function(data) {
-      console.log("📦 showRecommendedRoute data:", data);
+      // ✅ 0. 기존 것들 먼저 정리 (여기서 routeCoords 비워짐)
+      hideRunnerOnRoute();
 
+      // 1. polyline → routeCoords 재구성
       routeCoords = [];
-
-      // 🔹 1) polyline 배열 우선 사용 (예전처럼)
       if (Array.isArray(data.polyline)) {
-        data.polyline.forEach(p => {
-          if (!p) return;
-          const lat = Number(p.lat ?? p.latitude);
-          const lng = Number(p.lng ?? p.longitude);
-          if (Number.isNaN(lat) || Number.isNaN(lng)) return;
-          routeCoords.push(new kakao.maps.LatLng(lat, lng));
-        });
-      }
-
-      // 🔹 2) 혹시 polyline이 없고 segments만 있는 경우: segments로부터 coords 복원
-      if ((!routeCoords || routeCoords.length === 0) && Array.isArray(data.segments)) {
+        routeCoords = data.polyline.map(p => new kakao.maps.LatLng(p.lat, p.lng));
+      } else if (Array.isArray(data.segments)) {
         data.segments.forEach((seg, i) => {
-          const s = seg.startPoint || seg.start || seg.from || seg.start_point;
-          const e = seg.endPoint   || seg.end   || seg.to   || seg.end_point;
-          if (!s || !e) return;
-
-          const sLat = Number(s.lat ?? s.latitude);
-          const sLng = Number(s.lng ?? s.longitude);
-          const eLat = Number(e.lat ?? e.latitude);
-          const eLng = Number(e.lng ?? e.longitude);
-          if (Number.isNaN(sLat) || Number.isNaN(sLng) ||
-              Number.isNaN(eLat) || Number.isNaN(eLng)) return;
-
           if (i === 0) {
-            routeCoords.push(new kakao.maps.LatLng(sLat, sLng));
+            routeCoords.push(new kakao.maps.LatLng(seg.startPoint.lat, seg.startPoint.lng));
           }
-          routeCoords.push(new kakao.maps.LatLng(eLat, eLng));
+          routeCoords.push(new kakao.maps.LatLng(seg.endPoint.lat, seg.endPoint.lng));
         });
-      }
-
-      if (!routeCoords || routeCoords.length < 2) {
-        console.warn("❌ routeCoords 비어있음. polyline/segments 둘 다 파싱 실패.", data);
+      } else {
         return;
       }
 
-      // ⭐ 턴 정보 세팅 (기존 로직 유지)
+      // 2. 턴 정보 세팅
       routeTurns = [];
       if (Array.isArray(data.turns)) {
-        data.turns.forEach((t, idx) => {
+        data.turns.forEach(t => {
           if (typeof t.lat === 'number' && typeof t.lng === 'number') {
             routeTurns.push({
               lat: t.lat,
@@ -309,7 +290,6 @@
               type: t.type || 'straight',
               atDistM: t.atDistM || null,
               instruction: t.instruction || "",
-              id: t.id ?? idx.toString(),
             });
           } else if (typeof t.atDistM === 'number' && routeCoords.length > 1) {
             if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) {
@@ -336,7 +316,6 @@
                   type: t.type || 'straight',
                   atDistM: t.atDistM,
                   instruction: t.instruction || "",
-                  id: t.id ?? idx.toString(),
                 });
                 break;
               }
@@ -346,13 +325,30 @@
         });
       }
 
-      // 기존 것들 정리
-      hideRunnerOnRoute();
+      // 3. 세그먼트 원본 저장 (지나온 길 회색용) – 지금은 data.segments 없으면 안 씀
+      if (Array.isArray(data.segments)) {
+        routeSegmentsRaw = data.segments.slice();
+        routeSegmentsRaw = routeSegmentsRaw.map(seg => {
+          const cloned = Object.assign({}, seg);
+          cloned.isPassed = false;
+          return cloned;
+        });
+        window.updateRouteSegments(routeSegmentsRaw);
+      } else {
+        // segments 없으면 전체 초록색 라인 하나
+        const polyline = new kakao.maps.Polyline({
+          path: routeCoords,
+          strokeWeight: 6,
+          strokeColor: '#00FF7F',
+          strokeOpacity: 0.96,
+          strokeStyle: 'solid',
+          zIndex: 3,
+        });
+        polyline.setMap(map);
+        routePolylines.push(polyline);
+      }
 
-      // ⭐ 처음엔 전구간 연두색으로 그리기
-      drawRouteWithProgress(-1);
-
-      // 출발/도착 마커
+      // 4. 출발/도착 마커
       if (routeCoords.length > 0) {
         startMarker = new kakao.maps.Marker({
           map: map,
@@ -368,12 +364,15 @@
         map.setBounds(bounds);
       }
 
+      // 5. 상태 초기화
       window.r2uCourse = data;
       window.r2uTurns = routeTurns || [];
       window.r2uSpokenTurnIds = new Set();
       window.r2uLastIdx = 0;
       window.r2uIsOffRoute = false;
       window.r2uLastOffRouteSpoken = false;
+
+      console.log("✅ showRecommendedRoute: routeCoords length =", routeCoords.length);
     };
 
     /**
@@ -389,13 +388,10 @@
       // 2. 경로 이탈 감지
       const cur = new kakao.maps.LatLng(lat, lng);
       let minDist = Infinity;
-      let nearestIdxForOffRoute = 0;
-
       for (let i = 0; i < routeCoords.length; i++) {
         const d = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
         if (d < minDist) {
           minDist = d;
-          nearestIdxForOffRoute = i;
         }
       }
 
@@ -417,9 +413,28 @@
         window.r2uLastOffRouteSpoken = false;
       }
 
-      // 3. ⭐ 지나온 구간 회색 처리 (routeCoords 기준)
-      //    - nearestIdxForOffRoute보다 앞쪽 인덱스를 "지나온 구간"으로 본다.
-      drawRouteWithProgress(nearestIdxForOffRoute);
+      // 3. (선택) segments 기반 지나온 구간 회색 처리
+      if (routeSegmentsRaw && routeSegmentsRaw.length && routeCoords.length > 1) {
+        let nearestIdx = 0;
+        let min2 = Infinity;
+        for (let i = 0; i < routeCoords.length; i++) {
+          const d2 = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
+          if (d2 < min2) {
+            min2 = d2;
+            nearestIdx = i;
+          }
+        }
+
+        const updatedSegments = [];
+        for (let i = 0; i < routeSegmentsRaw.length; i++) {
+          const seg = routeSegmentsRaw[i];
+          const cloned = Object.assign({}, seg);
+          cloned.isPassed = i < nearestIdx;
+          updatedSegments.push(cloned);
+        }
+        routeSegmentsRaw = updatedSegments;
+        window.updateRouteSegments(routeSegmentsRaw);
+      }
     }
 
     /* ========= 지도 자동 따라가기 ========= */
@@ -508,6 +523,7 @@
 
       routeCoords = [];
       routeTurns = [];
+      routeSegmentsRaw = [];
       window.r2uSpokenTurnIds = new Set();
       window.r2uLastIdx = 0;
       window.r2uIsOffRoute = false;
@@ -538,7 +554,7 @@
       if (!isNavigationMode) return;
       if (!window.r2uTurns || window.r2uTurns.length === 0) return;
 
-      const THRESHOLD = 40; // 몇 m 앞에서 읽을지
+      const THRESHOLD = 40;
 
       for (let i = 0; i < window.r2uTurns.length; i++) {
         const t = window.r2uTurns[i];
