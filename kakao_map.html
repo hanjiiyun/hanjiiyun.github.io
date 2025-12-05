@@ -548,6 +548,21 @@
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c;
     }
+    
+    // 🔥 Flutter가 종료할 때 polyline 회수용
+window.getEncodedPolyline = function () {
+  if (!routeCoords || routeCoords.length === 0) return "";
+
+  let path = routeCoords.map(p => ({
+    lat: p.getLat(),
+    lng: p.getLng()
+  }));
+
+  return JSON.stringify(path);
+};
+
+
+    
 
     // ✅ 턴 TTS 체크
     function r2uCheckTurnTts(currentLat, currentLng) {
