@@ -1,4 +1,4 @@
-<!doctype html>
+<!doctype html> 
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
@@ -75,8 +75,13 @@
 
   <script>
     /* ========= 전역 ========= */
-    window.r2uOffRouteWarned = false; // 이탈 안내 1회 방지
-    window.r2uBackToRouteWarned = false; // 복귀 안내 1회 방지
+    window.r2uOffRouteWarned = false;   // (미사용 예전 플래그)
+    window.r2uBackToRouteWarned = false;
+
+    // ⭐ 추가: 경로 진행/이탈 관련 전역 플래그
+    window.r2uIsOffRoute = false;       // 현재 경로 이탈 여부
+    window.r2uLastOffRouteSpoken = false; // 이탈 안내 한 번만 읽기
+    window.r2uLastIdx = 0;              // 진행 인덱스 안정화용
 
     let map;
 
@@ -97,7 +102,7 @@
     let routeArrows = []; // 방향 화살표들
     let routeTurns = [];  // ⭐ 턴 위치 정보 (좌/우회전 지점)
 
-    
+
 
     /* ========= 지도 초기화 ========= */
     function initMap() {
@@ -107,7 +112,6 @@
         level: 3
       });
       defaultMapLevel = map.getLevel();
-      
     }
     initMap();
 
@@ -123,11 +127,10 @@
       }
       if (!coords || coords.length < 2) return;
 
-      
       // 2️⃣ 턴 지점 화살표 (좌/우회전 지점에만)
       if (routeTurns && routeTurns.length) {
         routeTurns.forEach(turn => {
-          const tLat = turn.lat
+          const tLat = turn.lat;
           const tLng = turn.lng;
           if (typeof tLat !== 'number' || typeof tLng !== 'number') return;
 
@@ -340,71 +343,88 @@
       window.r2uCourse = data;
       window.r2uTurns = routeTurns || [];
       window.r2uSpokenTurnIds = new Set();
+      window.r2uLastIdx = 0;
+      window.r2uIsOffRoute = false;
+      window.r2uLastOffRouteSpoken = false;
     };
 
     /* ========= 지나온 길 / 남은 길 업데이트 ========= */
     window.updateRouteProgress = function(lat, lng) {
-    if (!routeCoords.length) return;
-    if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) return;
+      if (!routeCoords.length) return;
+      if (!kakao.maps.geometry || !kakao.maps.geometry.spherical) return;
 
-    const cur = new kakao.maps.LatLng(lat, lng);
+      const cur = new kakao.maps.LatLng(lat, lng);
 
-    // 🔎 가장 가까운 지점 찾기
-    let idx = 0;
-    let minDist = Infinity;
-    for (let i = 0; i < routeCoords.length; i++) {
-        const d = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
-        if (d < minDist) {
-            minDist = d;
-            idx = i;
+      // 🔎 가장 가까운 지점 찾기
+      let idx = 0;
+      let minDist = Infinity;
+      for (let i = 0; i < routeCoords.length; i++) {
+          const d = kakao.maps.geometry.spherical.computeDistanceBetween(cur, routeCoords[i]);
+          if (d < minDist) {
+              minDist = d;
+              idx = i;
+          }
+      }
+
+      // ⛔ idx가 너무 많이 앞뒤로 튀지 않도록 안정화
+      const prevIdx = (typeof window.r2uLastIdx === "number") ? window.r2uLastIdx : 0;
+      const stableIdx = Math.max(prevIdx, idx);
+      window.r2uLastIdx = stableIdx;
+
+      // ----------- 회색/연두색 라인 업데이트 -----------
+      const donePath   = routeCoords.slice(0, stableIdx + 1);
+      const remainPath = routeCoords.slice(stableIdx);
+
+      if (routeLineDone)   routeLineDone.setMap(null);
+      if (routeLineRemain) routeLineRemain.setMap(null);
+
+      // 회색: 지나온 길
+      routeLineDone = new kakao.maps.Polyline({
+          path: donePath,
+          strokeWeight: 7,
+          strokeColor: '#555555',
+          strokeOpacity: 0.96
+      });
+      routeLineDone.setMap(map);
+
+      // 연두색: 남은 길
+      routeLineRemain = new kakao.maps.Polyline({
+          path: remainPath,
+          strokeWeight: isNavigationMode ? 9 : 6,
+          strokeColor: '#8BC34A',
+          strokeOpacity: 0.96
+      });
+      routeLineRemain.setMap(map);
+
+      // ------------ 경로 이탈 감지 15m 기준 -------------
+      let isOffRoute = minDist > 15;
+
+      // ⭐ 추가: 전역 플래그에 저장 → 러너 아이콘 색에 사용
+      window.r2uIsOffRoute = isOffRoute;
+
+      if (isOffRoute) {
+        if (!window.r2uLastOffRouteSpoken) {
+          window.r2uLastOffRouteSpoken = true;
+
+          const msg = "경로에서 벗어났습니다. 경로를 확인해주세요.";
+
+          // 기존 window.R2UTTS 우선
+          if (window.R2UTTS && window.R2UTTS.postMessage) {
+            window.R2UTTS.postMessage(msg);
+          }
+          // ⭐ 추가: R2UTTS 전역으로도 호출 지원
+          else if (typeof R2UTTS !== "undefined" && R2UTTS.postMessage) {
+            R2UTTS.postMessage(msg);
+          }
         }
-    }
-
-    // ⛔ idx가 너무 많이 앞뒤로 튀지 않도록 안정화
-    const stableIdx = Math.max(window.r2uLastIdx, idx);
-    window.r2uLastIdx = stableIdx;
-
-    // ----------- 회색/연두색 라인 업데이트 -----------
-    const donePath   = routeCoords.slice(0, stableIdx + 1);
-    const remainPath = routeCoords.slice(stableIdx);
-
-    if (routeLineDone)   routeLineDone.setMap(null);
-    if (routeLineRemain) routeLineRemain.setMap(null);
-
-    // 회색: 지나온 길
-    routeLineDone = new kakao.maps.Polyline({
-        path: donePath,
-        strokeWeight: 7,
-        strokeColor: '#555555',
-        strokeOpacity: 0.96
-    });
-    routeLineDone.setMap(map);
-
-    // 연두색: 남은 길
-    routeLineRemain = new kakao.maps.Polyline({
-        path: remainPath,
-        strokeWeight: isNavigationMode ? 9 : 6,
-        strokeColor: '#8BC34A',
-        strokeOpacity: 0.96
-    });
-    routeLineRemain.setMap(map);
-
-    // ------------ 경로 이탈 감지 15m 기준 -------------
-    let isOffRoute = minDist > 15;  
-
-    if (isOffRoute) {
-        if (!window.r2uLastOffRouteSpoken && window.R2UTTS && window.R2UTTS.postMessage) {
-            window.r2uLastOffRouteSpoken = true;
-            window.R2UTTS.postMessage("경로에서 벗어났습니다. 경로를 확인해주세요.");
-        }
-    } else {
+      } else {
         // 경로 복귀 → 안내 초기화
         window.r2uLastOffRouteSpoken = false;
-    }
+      }
 
-    // ------------ 턴 안내 체크 ------------
-    r2uCheckTurnTts(lat, lng);
-}
+      // ------------ 턴 안내 체크 ------------
+      r2uCheckTurnTts(lat, lng);
+    };
 
     /* ========= 지도 자동 따라가기 ========= */
     window.followUser = function(lat, lng) {
@@ -418,9 +438,12 @@
 
       const pos = new kakao.maps.LatLng(lat, lng);
 
-      const color = (onRoute === true || onRoute === "true")
-        ? "#1E88E5"
-        : "#E53935";
+      // ⭐ 추가: HTML에서 계산한 경로 이탈 플래그를 우선 적용
+      const offRouteFlag = window.r2uIsOffRoute === true
+        ? true
+        : !(onRoute === true || onRoute === "true");
+
+      const color = offRouteFlag ? "#E53935" : "#1E88E5";
 
       const h = Number(heading || 0);
       const offsetDeg = 0;
@@ -496,59 +519,67 @@
 
       routeCoords = [];
       routeTurns = [];
+      window.r2uSpokenTurnIds = new Set();
+      window.r2uLastIdx = 0;
+      window.r2uIsOffRoute = false;
+      window.r2uLastOffRouteSpoken = false;
     };
-  window.r2uCourse = window.r2uCourse || null;
-window.r2uTurns = window.r2uTurns || [];
-window.r2uSpokenTurnIds = window.r2uSpokenTurnIds || new Set();
 
-// 간단 거리 계산 (미터 단위)
-function r2uDistanceMeter(lat1, lng1, lat2, lng2) {
-  const R = 6371000; // m
-  const toRad = Math.PI / 180;
-  const dLat = (lat2 - lat1) * toRad;
-  const dLng = (lng2 - lng1) * toRad;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * toRad) *
-      Math.cos(lat2 * toRad) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+    window.r2uCourse = window.r2uCourse || null;
+    window.r2uTurns = window.r2uTurns || [];
+    window.r2uSpokenTurnIds = window.r2uSpokenTurnIds || new Set();
 
-// ✅ 내 위치 기준으로 "어떤 턴을 말해야 하나" 체크
-function r2uCheckTurnTts(currentLat, currentLng) {
-  if (!isNavigationMode) return;
+    // 간단 거리 계산 (미터 단위)
+    function r2uDistanceMeter(lat1, lng1, lat2, lng2) {
+      const R = 6371000; // m
+      const toRad = Math.PI / 180;
+      const dLat = (lat2 - lat1) * toRad;
+      const dLng = (lng2 - lng1) * toRad;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * toRad) *
+          Math.cos(lat2 * toRad) *
+          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
 
-  if (!window.r2uTurns || window.r2uTurns.length === 0) return;
+    // ✅ 내 위치 기준으로 "어떤 턴을 말해야 하나" 체크
+    function r2uCheckTurnTts(currentLat, currentLng) {
+      if (!isNavigationMode) return;
+      if (!window.r2uTurns || window.r2uTurns.length === 0) return;
 
-  const THRESHOLD = 40; // 몇 m 앞에서 읽을지 (원하면 30~80 사이로 조절해도 됨)
+      const THRESHOLD = 40; // 몇 m 앞에서 읽을지
 
-  for (let i = 0; i < window.r2uTurns.length; i++) {
-    const t = window.r2uTurns[i];
+      for (let i = 0; i < window.r2uTurns.length; i++) {
+        const t = window.r2uTurns[i];
 
-    // 🔎 턴 좌표 필드 추측: lat/lng 또는 latitude/longitude 또는 point.lat/point.lng
-    const turnLat = t.lat ?? t.latitude ?? (t.point && t.point.lat);
-    const turnLng = t.lng ?? t.longitude ?? (t.point && t.point.lng);
-    if (turnLat == null || turnLng == null) continue;
+        // 🔎 턴 좌표 필드 추측: lat/lng 또는 latitude/longitude 또는 point.lat/point.lng
+        const turnLat = t.lat ?? t.latitude ?? (t.point && t.point.lat);
+        const turnLng = t.lng ?? t.longitude ?? (t.point && t.point.lng);
+        if (turnLat == null || turnLng == null) continue;
 
-    const turnId = t.id ?? i.toString();
-    const dist = r2uDistanceMeter(currentLat, currentLng, turnLat, turnLng);
+        const turnId = t.id ?? i.toString();
+        const dist = r2uDistanceMeter(currentLat, currentLng, turnLat, turnLng);
 
-    if (dist < THRESHOLD && !window.r2uSpokenTurnIds.has(turnId)) {
-      // 👂 한 번만 읽도록 기록
-      window.r2uSpokenTurnIds.add(turnId);
+        if (dist < THRESHOLD && !window.r2uSpokenTurnIds.has(turnId)) {
+          // 👂 한 번만 읽도록 기록
+          window.r2uSpokenTurnIds.add(turnId);
 
-      // 🔊 Flutter TTS로 안내 문구 전송
-      if (window.R2UTTS && window.R2UTTS.postMessage) {
-        const msg = t.instruction || "";
-        window.R2UTTS.postMessage(msg);
+          const msg = t.instruction || "";
+          if (!msg) continue;
+
+          // 기존 window.R2UTTS 우선
+          if (window.R2UTTS && window.R2UTTS.postMessage) {
+            window.R2UTTS.postMessage(msg);
+          }
+          // ⭐ 추가: R2UTTS 전역 객체로도 지원
+          else if (typeof R2UTTS !== "undefined" && R2UTTS.postMessage) {
+            R2UTTS.postMessage(msg);
+          }
+        }
       }
     }
-  }
-}
-
-</script>
+  </script>
 </body>
 </html>
-
